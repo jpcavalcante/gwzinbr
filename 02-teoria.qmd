@@ -1,0 +1,168 @@
+# Theoretical Background
+
+## Count data models
+
+### Poisson regression
+
+The Poisson distribution assigns probability
+
+$$
+P(Y = y \mid \mu) = \frac{e^{-\mu} \mu^y}{y!}, \quad y = 0, 1, 2, \ldots
+$$
+
+where $\mu > 0$ is both the mean and the variance. In Poisson regression, a
+log-linear model links covariates to the mean:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
+$$
+
+The **offset** absorbs known exposure differences between units (e.g., population
+size, observation time). When counts are modelled as rates, the offset is typically
+$\log(\text{population}_i)$ or, in the indirect standardisation approach, the log
+of the expected number of cases $\log(E_i)$.
+
+**Limitation:** Poisson requires $\text{Var}(Y) = E(Y)$. When this fails
+(overdispersion), standard errors are underestimated and inference is invalid.
+
+### Negative Binomial regression
+
+The Negative Binomial (NB) distribution introduces an overdispersion parameter
+$\alpha > 0$ (or equivalently $\theta = 1/\alpha$):
+
+$$
+P(Y = y \mid \mu, \alpha) = \binom{y + \theta - 1}{y}
+\left(\frac{\mu}{\mu + \theta}\right)^y
+\left(\frac{\theta}{\mu + \theta}\right)^\theta
+$$
+
+with $\text{Var}(Y) = \mu + \alpha \mu^2 > \mu$. As $\alpha \to 0$ (equivalently
+$\theta \to \infty$), the NB converges to the Poisson.
+
+The NB regression model uses the same log link:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
+$$
+
+with $\alpha$ estimated jointly from the data.
+
+### Zero-Inflated models
+
+Zero-inflated models posit that zeros arise from **two separate processes**:
+
+1. A **structural-zero process** (e.g., a district that never generates cases
+   regardless of risk factors), governed by a Bernoulli with probability $\pi_i$.
+2. A **count process** (Poisson or NB), which can also produce zeros by chance.
+
+The **ZIP** probability mass function is:
+
+$$
+P(Y = y) = \begin{cases}
+\pi_i + (1 - \pi_i) e^{-\mu_i} & y = 0 \\
+(1 - \pi_i) \frac{e^{-\mu_i} \mu_i^y}{y!} & y > 0
+\end{cases}
+$$
+
+The **ZINB** replaces the Poisson component with a Negative Binomial:
+
+$$
+P(Y = y) = \begin{cases}
+\pi_i + (1 - \pi_i) \left(\frac{\theta}{\mu_i + \theta}\right)^\theta & y = 0 \\
+(1 - \pi_i) \binom{y + \theta - 1}{y}
+\left(\frac{\mu_i}{\mu_i + \theta}\right)^y
+\left(\frac{\theta}{\mu_i + \theta}\right)^\theta & y > 0
+\end{cases}
+$$
+
+The zero-inflation probability $\pi_i$ is modelled via a logistic link:
+
+$$
+\text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}
+$$
+
+where $\mathbf{g}_i$ can be a subset of or a different set of covariates from $\mathbf{x}_i$.
+
+**Checking for excess zeros:** Compare observed zeros to the number expected
+under a fitted NB model. If $\sum_i \hat{P}(Y_i = 0 \mid \hat{\mu}_i, \hat{\alpha}) \ll$
+number of observed zeros, a zero-inflated model is warranted.
+
+## Geographically Weighted Regression (GWR)
+
+### Core idea
+
+Standard regression estimates a single coefficient vector $\boldsymbol{\beta}$
+assumed constant across all observations. GWR relaxes this by estimating a
+**local coefficient vector** $\boldsymbol{\beta}(\mathbf{u}_i)$ for each
+location $\mathbf{u}_i = (\text{long}_i, \text{lat}_i)$:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i) + \text{offset}_i
+$$
+
+The local estimates are obtained by re-weighting the likelihood with a spatial
+kernel that down-weights distant observations.
+
+### Kernel functions
+
+**gwzinbr** implements two kernel types, selected via the `method` argument:
+
+| `method` | Kernel | Formula |
+|----------|--------|---------|
+| `"fixed_g"` | Gaussian (fixed bandwidth) | $w_{ij} = \exp\!\left(-\tfrac{1}{2}(d_{ij}/h)^2\right)$ |
+| `"adaptive_bsq"` | Bi-square (adaptive bandwidth) | $w_{ij} = \left(1 - (d_{ij}/h_i)^2\right)^2 \cdot \mathbf{1}[d_{ij} \leq h_i]$ |
+
+where $d_{ij}$ is the Euclidean distance between locations $i$ and $j$, and $h$
+(or $h_i$ in the adaptive case) is the **bandwidth**.
+
+- **Fixed bandwidth** (`fixed_g`): $h$ is a distance value (same units as
+  coordinates). Every location uses the same radius.
+- **Adaptive bandwidth** (`adaptive_bsq`): $h$ is an integer — the number of
+  nearest neighbours included. Sparse regions get a larger physical radius.
+
+::: {.callout-tip}
+## Which kernel to choose?
+Use **adaptive** (`adaptive_bsq`) when the spatial distribution of observations
+is irregular (e.g., administrative units that vary greatly in size). Use
+**fixed** (`fixed_g`) when observations are regularly distributed or when you
+have a strong a priori reason for a fixed radius.
+:::
+
+### Bandwidth selection
+
+The bandwidth $h$ controls the bias–variance trade-off:
+
+- **Small $h$**: highly local estimates, low bias, high variance.
+- **Large $h$**: smoother estimates, high bias, low variance. As $h \to \infty$,
+  the GWR collapses to the global model.
+
+The optimal $h$ is found by minimising either:
+
+- **Cross-validation (CV):** leave-one-out prediction error
+  $\text{CV}(h) = \sum_i (y_i - \hat{y}_{-i}(h))^2$
+- **AICc:** corrected Akaike Information Criterion, which penalises model
+  complexity via the effective number of parameters $\text{tr}(\mathbf{S})$.
+
+The `Golden()` function implements a **Golden Section Search** to find this optimum
+efficiently (see @sec-golden).
+
+## GWZINBR: combining GWR with ZINB
+
+The full GWZINBR model estimates, at each location $\mathbf{u}_i$:
+
+1. A local NB mean: $\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i)$
+2. A local zero-inflation probability:
+   $\text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}(\mathbf{u}_i)$
+3. A local overdispersion parameter: $\alpha_i$
+
+All three sets of parameters are estimated jointly via a geographically weighted
+Iteratively Reweighted Least Squares (IRLS) algorithm, using the spatial kernel
+to assign observation-specific weights.
+
+### Non-stationarity test
+
+After fitting the model, a formal test checks whether the local variation in each
+coefficient $\beta_k(\mathbf{u}_i)$ is statistically significant — i.e., whether
+the GWR version truly improves over a global $\beta_k$. This test is reported in
+`$non_stationary_test` (and `$non_stationary_test_zero_infl` for the zero-inflation
+component).

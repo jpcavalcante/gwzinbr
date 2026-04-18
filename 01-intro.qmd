@@ -1,0 +1,84 @@
+# Introduction
+
+## Motivation
+
+Count data — integer values representing the number of times an event occurs in
+a fixed region or time period — appear frequently in public health, criminology,
+ecology, and urban studies. Standard linear regression is inappropriate for counts
+because it can produce negative predictions and assumes normally distributed errors.
+The natural starting point is the **Poisson** regression, but it imposes a restrictive
+assumption: the mean equals the variance (equidispersion).
+
+Real-world count data routinely violate this assumption in two ways:
+
+1. **Overdispersion**: the variance exceeds the mean, often because unmeasured
+   heterogeneity inflates variability between units.
+2. **Excess zeros**: the proportion of zero counts is larger than what any
+   single Poisson or Negative Binomial distribution can explain — usually because
+   two distinct processes generate the data (a structural-zero process and a
+   count process).
+
+Beyond the distributional question, spatial data face a third challenge: the
+**spatial non-stationarity** of relationships. A covariate that strongly predicts
+counts in one region may be irrelevant in another. A single global regression
+coefficient cannot capture this heterogeneity.
+
+**gwzinbr** addresses all three challenges simultaneously by fitting
+**Geographically Weighted** versions of the Poisson, Negative Binomial, ZIP, and
+ZINB regression models.
+
+## When to use gwzinbr
+
+Use the functions in this package when:
+
+- Your response is a **non-negative integer count**.
+- Your observations are **georeferenced** (each row has a latitude/longitude or
+  equivalent spatial coordinate).
+- You suspect the relationship between predictors and the response **varies across
+  space** (spatial non-stationarity).
+
+Use the **ZINB** variant (`model = "zinb"`) additionally when:
+
+- The count distribution shows **overdispersion** (variance > mean).
+- The data contain **more zeros** than the Negative Binomial distribution predicts.
+
+## Recommended workflow {#sec-workflow}
+
+The figure below summarises the decision path from raw data to a fitted GWZINBR model.
+
+```
+Raw count data
+      │
+      ▼
+Check overdispersion ──── equidispersed? ──► GWR-Poisson
+      │ overdispersed
+      ▼
+Check excess zeros ──── no excess zeros? ──► GWNBR (model = "negbin")
+      │ excess zeros
+      ▼
+Check spatial autocorrelation in global NB residuals
+      │ significant Moran I
+      ▼
+Select bandwidth  ◄── Golden()
+      │
+      ▼
+Fit model ◄── gwzinbr(model = "zinb")
+      │
+      ▼
+Diagnostics + visualization
+```
+
+## Package overview
+
+The package exports two main functions:
+
+| Function | Purpose |
+|----------|---------|
+| `Golden()` | Golden Section Search for the optimal bandwidth $h$ |
+| `gwzinbr()` | Fit a geographically weighted count model |
+
+A built-in dataset is also provided:
+
+| Dataset | Description |
+|---------|-------------|
+| `southkorea_covid19` | COVID-19 case counts across 250 districts of South Korea |
