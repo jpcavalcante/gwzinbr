@@ -1,0 +1,180 @@
+# `gwzinbr()`: Model Fitting {#sec-gwzinbr}
+
+## Overview
+
+`gwzinbr()` is the main modelling function. Given a dataset with spatial coordinates
+and a bandwidth $h$ (from `Golden()`), it fits a geographically weighted regression
+model for count data and returns a rich list of local estimates, standard errors,
+significance tests, and goodness-of-fit measures.
+
+## Function signature
+
+```r
+gwzinbr(
+  data,
+  formula,
+  xvarinf    = NULL,
+  weight     = NULL,
+  lat,
+  long,
+  grid       = NULL,
+  method,
+  model      = "zinb",
+  offset     = NULL,
+  distancekm = FALSE,
+  force      = FALSE,
+  int_inf    = TRUE,
+  maxg       = 100,
+  h          = NULL
+)
+```
+
+## Parameter reference
+
+### Data and model specification
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `data` | `data.frame` | — | Dataset (plain data frame, not `sf`). |
+| `formula` | `formula` | — | Formula for the count component. Example: `cases ~ x1 + x2`. |
+| `xvarinf` | `character` | `NULL` | Column name(s) for zero-inflation covariates. `NULL` = no zero-inflation component. |
+| `weight` | `character` | `NULL` | Sample weight column. `NULL` = equal weights. |
+| `offset` | `character` | `NULL` | Log-scale offset column. `NULL` = zero offset. |
+| `model` | `character` | `"zinb"` | `"zinb"`, `"zip"`, `"negbin"`, or `"poisson"`. |
+| `force` | `logical` | `FALSE` | Force the chosen model even when zero-inflation is not needed. |
+| `int_inf` | `logical` | `TRUE` | Include an intercept in the zero-inflation component. |
+| `maxg` | `integer` | `100` | Max iterations for the zero-inflation IRLS subproblem. |
+
+### Spatial specification
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lat` | `character` | — | Latitude / Y-coordinate column name. |
+| `long` | `character` | — | Longitude / X-coordinate column name. |
+| `distancekm` | `logical` | `FALSE` | Convert distances to km (multiply by 111). Use with decimal degrees only. |
+
+### Bandwidth and prediction grid
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `h` | `numeric` | `NULL` | Bandwidth value. Use the output of `Golden()$min_bandwidth`. If `NULL`, fitting proceeds with all observations equally weighted (global model). |
+| `grid` | `data.frame` | `NULL` | Additional locations for prediction. Must contain the same `lat`/`long` columns as `data`. Predictions are stored in `$param_estimates_grid`. |
+
+## Supported model combinations
+
+| `model` | `xvarinf` | `force` | Result |
+|---------|-----------|---------|--------|
+| `"zinb"` | `NULL` | `FALSE` | GWNBR (falls back automatically if no excess zeros) |
+| `"zinb"` | `"var"` | `TRUE` | GWZINBR — full zero-inflated NB |
+| `"negbin"` | any | — | GWNBR (zero inflation ignored) |
+| `"zip"` | `NULL` | `FALSE` | GWZIP (falls back to GWPoisson if no excess zeros) |
+| `"poisson"` | any | — | GWR-Poisson |
+
+::: {.callout-note}
+## Automatic model fallback
+When `force = FALSE` and the expected number of zeros under the fitted NB
+distribution meets or exceeds the observed zeros, the package prints a note
+and silently drops the zero-inflation component. Set `force = TRUE` to
+override this behaviour.
+:::
+
+## Return value {#sec-output-overview}
+
+`gwzinbr()` returns a named list with **22 elements**. They are detailed in full
+in @sec-output. Here is a quick-reference table:
+
+| Element | Type | Description |
+|---------|------|-------------|
+| `$bandwidth` | scalar | Bandwidth value used |
+| `$measures` | named vector | AIC, AICc, deviance, pseudo-R², adj. pseudo-R² |
+| `$gwr_param_estimates` | matrix $N \times (p+1)$ | Local coefficient estimates |
+| `$alpha_estimates` | matrix $N \times 2$ | Local $\alpha$ (overdispersion) estimates |
+| `$residuals` | matrix $N \times 5$ | Residuals (multiple types) |
+| `$t_test_gwr_param_estimates` | matrix | $t$-statistics and $p$-values per location |
+| `$non_stationary_test` | data frame | Non-stationarity test per covariate |
+| `$global_param_estimates` | matrix | Global model coefficients (reference) |
+| `$qntls_gwr_param_estimates` | matrix | Quantiles of local estimates |
+| `$descript_stats_gwr_param_estimates` | matrix | Mean, SD, min, max of local estimates |
+| `$qntls_gwr_se` | matrix | Quantiles of local standard errors |
+| `$descript_stats_gwr_se` | matrix | Descriptive stats of local SE |
+| `$variance_covariance_matrix` | matrix | Variance-covariance of global estimates |
+| `$qntls_gwr_zero_infl_param_estimates` | matrix | Quantiles of zero-inflation estimates |
+| `$descript_stats_gwr_zero_infl_param_estimates` | matrix | Descriptive stats of ZI estimates |
+| `$t_test_gwr_zero_infl_param_estimates` | matrix | $t$-tests for ZI component |
+| `$qntls_gwr_zero_infl_se` | matrix | Quantiles of ZI standard errors |
+| `$descript_stats_gwr_zero_infl_se` | matrix | Descriptive stats of ZI SE |
+| `$non_stationary_test_zero_infl` | data frame | Non-stationarity test for ZI component |
+| `$analysis_max_like_zero_infl_param_estimated` | matrix | MLE of ZI parameters |
+| `$analysis_max_like_gof_measures` | matrix | GoF for ZI global model |
+| `$param_estimates_grid` | matrix | Predictions at `grid` locations |
+
+## Minimal example
+
+```{r}
+#| label: gwzinbr-minimal
+#| eval: false
+
+library(gwzinbr)
+data(southkorea_covid19)
+
+mod <- gwzinbr(
+  data       = southkorea_covid19,
+  formula    = n_covid1 ~ diff_sd,
+  lat        = "y", long = "x",
+  offset     = "ln_total",
+  model      = "negbin",
+  method     = "adaptive_bsq",
+  h          = 230,
+  distancekm = TRUE,
+  force      = TRUE
+)
+
+mod$bandwidth
+mod$measures
+```
+
+## Full example (all arguments)
+
+```{r}
+#| label: gwzinbr-full
+#| eval: false
+
+mod_full <- gwzinbr(
+  data       = southkorea_covid19,
+  formula    = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+                          diff_sd + Crowding + Migration + Health_behavior,
+  xvarinf    = NULL,       # no zero-inflation component
+  weight     = NULL,       # equal weights
+  lat        = "y",
+  long       = "x",
+  grid       = NULL,       # no prediction grid
+  method     = "adaptive_bsq",
+  model      = "negbin",
+  offset     = "ln_total",
+  distancekm = TRUE,
+  force      = TRUE,
+  int_inf    = TRUE,
+  maxg       = 100,
+  h          = 230         # from Golden()
+)
+```
+
+## Notes on runtime
+
+`gwzinbr()` fits a separate weighted GLM for each of the $N$ spatial units. For
+large datasets or complex models (ZINB with many covariates), runtime can be
+substantial. As a rough guide:
+
+| $N$ | Model | Approximate time |
+|-----|-------|-----------------|
+| < 100 | NB | < 1 min |
+| 250 | NB | 2–10 min |
+| 250 | ZINB | 10–30 min |
+| > 500 | NB | 30+ min |
+
+Cache the result with `saveRDS()` immediately after fitting:
+
+```r
+saveRDS(mod, "cache/model_gwzinbr.rds")
+mod <- readRDS("cache/model_gwzinbr.rds")
+```

@@ -1,0 +1,209 @@
+# `Golden()`: Bandwidth Selection {#sec-golden}
+
+## Overview
+
+`Golden()` finds the optimal bandwidth $h$ for the geographically weighted model
+using a **Golden Section Search (GSS)** algorithm. It evaluates a criterion
+function (CV or AICc) at candidate bandwidth values and narrows the search interval
+until convergence.
+
+::: {.callout-note}
+## Run Golden() before gwzinbr()
+Always run `Golden()` first to determine `h`, then pass that value to `gwzinbr(h = ...)`.
+Using an arbitrary bandwidth leads to either over-smoothing (global-like estimates)
+or under-smoothing (noisy, unstable local estimates).
+:::
+
+## Function signature
+
+```r
+Golden(
+  data,
+  formula,
+  xvarinf   = NULL,
+  weight    = NULL,
+  lat,
+  long,
+  globalmin = TRUE,
+  method,
+  model     = "zinb",
+  bandwidth = "cv",
+  offset    = NULL,
+  force     = FALSE,
+  maxg      = 100,
+  distancekm = FALSE
+)
+```
+
+## Parameter reference
+
+### Data and model specification
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `data` | `data.frame` | — | Dataset. Must be a plain data frame (not `sf`). |
+| `formula` | `formula` | — | Model formula for the count component, as in `lm()`. Example: `cases ~ x1 + x2`. |
+| `xvarinf` | `character` | `NULL` | Column name(s) for covariates of the zero-inflation component. Set to `NULL` for non-zero-inflated models. |
+| `weight` | `character` | `NULL` | Column name containing sample weights. `NULL` gives equal weights. |
+| `offset` | `character` | `NULL` | Column name of the offset (must be on the **log scale**). `NULL` sets offset to zero for all observations. |
+
+### Spatial specification
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lat` | `character` | — | Column name for the Y-coordinate (latitude or northing). |
+| `long` | `character` | — | Column name for the X-coordinate (longitude or easting). |
+| `distancekm` | `logical` | `FALSE` | If `TRUE`, multiply Euclidean distance by 111 to approximate kilometres. Use only with decimal degree coordinates. |
+
+### Bandwidth search settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `method` | `character` | — | Kernel type: `"adaptive_bsq"` (bi-square adaptive) or `"fixed_g"` (Gaussian fixed). |
+| `bandwidth` | `character` | `"cv"` | Optimisation criterion: `"cv"` (cross-validation) or `"aic"` (corrected AIC). |
+| `globalmin` | `logical` | `TRUE` | If `TRUE`, divides the search space into three overlapping intervals and runs GSS on each, then returns the global minimum across all three. Strongly recommended. |
+
+### Model settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model` | `character` | `"zinb"` | Distribution family: `"zinb"`, `"zip"`, `"negbin"`, or `"poisson"`. Must match the model you will pass to `gwzinbr()`. |
+| `force` | `logical` | `FALSE` | If `FALSE` and zero-inflation is unnecessary (expected zeros ≥ observed zeros), the function automatically falls back to the non-zero-inflated version. Set `TRUE` to override. |
+| `maxg` | `integer` | `100` | Maximum iterations for the zero-inflation subproblem. Increase if convergence warnings appear. |
+
+## Return value
+
+`Golden()` returns an invisible named list:
+
+| Element | Description |
+|---------|-------------|
+| `$h_values` | Initial $h_0, h_1, h_2, h_3$ values for each GSS run |
+| `$iterations` | Data frame: all $(h_1, \text{CV}_1, h_2, \text{CV}_2)$ pairs evaluated |
+| `$gss_results` | Data frame: optimal $h$ and criterion per GSS interval |
+| `$min_bandwidth` | **Scalar**: the final optimal bandwidth to pass to `gwzinbr()` |
+
+## The Golden Section Search algorithm
+
+The GSS is a classical derivative-free optimisation method for unimodal functions.
+Starting with an interval $[a, b]$, it evaluates the criterion at two interior
+points $h_1 = b - r(b - a)$ and $h_2 = a + r(b - a)$ where $r = 0.618$
+(the golden ratio reciprocal). After comparing the criterion values, the worse
+half of the interval is discarded and the process repeats.
+
+When `globalmin = TRUE`, the full range is split into three segments and GSS runs
+on each. The overall minimum is the best across segments. This guards against
+local minima in non-unimodal criterion functions.
+
+## Adaptive vs fixed bandwidth {#sec-method}
+
+### `method = "adaptive_bsq"` (recommended for irregular grids)
+
+$h$ is an **integer**: the number of nearest neighbours included in each local
+regression. The physical radius adapts to local point density — sparse regions
+get a larger radius, dense regions a smaller one.
+
+- Search space: $[5, N]$ (at least 5 neighbours, at most all $N$ observations)
+- Output `$min_bandwidth` is rounded to an integer with `floor()`
+
+### `method = "fixed_g"` (appropriate for regular grids)
+
+$h$ is a **distance** in the same units as the coordinates (metres, km, or degrees
+depending on your CRS and `distancekm`).
+
+- Search space: $[0, \max(\text{pairwise distances})]$
+
+## CV vs AIC criterion {#sec-criterion}
+
+| Criterion | Formula | Characteristics |
+|-----------|---------|-----------------|
+| `"cv"` | $\sum_i w_i(y_i - \hat{y}_{-i})^2$ | Leave-one-out; focuses on predictive accuracy; can favour small $h$ |
+| `"aic"` | $\text{AICc} = 2\hat{k} - 2\hat{\ell} + \frac{2\hat{k}(\hat{k}+1)}{N-\hat{k}-1}$ | Penalises effective parameters $\hat{k} = \text{tr}(\mathbf{S})$; balances fit and complexity |
+
+AICc is generally preferred for inference; CV for prediction.
+
+## Examples
+
+### Minimal example (Poisson, adaptive, CV)
+
+```{r}
+#| label: golden-minimal
+#| eval: false
+
+library(gwzinbr)
+data(southkorea_covid19)
+
+gss <- Golden(
+  data      = southkorea_covid19,
+  formula   = n_covid1 ~ diff_sd,
+  lat       = "y", long = "x",
+  offset    = "ln_total",
+  model     = "poisson",
+  method    = "adaptive_bsq",
+  bandwidth = "cv",
+  globalmin = FALSE,
+  distancekm = FALSE
+)
+
+gss$min_bandwidth
+```
+
+### Recommended: global minimum, AICc, Negative Binomial
+
+```{r}
+#| label: golden-nb-aic
+#| eval: false
+
+gss_nb <- Golden(
+  data      = southkorea_covid19,
+  formula   = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+                         diff_sd + Crowding + Migration + Health_behavior,
+  lat       = "y", long = "x",
+  offset    = "ln_total",
+  model     = "negbin",
+  method    = "adaptive_bsq",
+  bandwidth = "aic",
+  globalmin = TRUE,
+  distancekm = TRUE,
+  force     = TRUE
+)
+
+# Optimal bandwidth
+gss_nb$min_bandwidth
+
+# All iterations (useful for diagnosing convergence)
+head(gss_nb$iterations)
+```
+
+### Inspecting the convergence table
+
+```{r}
+#| label: golden-iterations
+#| eval: false
+
+# After running gss_nb above:
+gss_nb$iterations
+#   GSS_count      h1      aic1      h2      aic2
+# 1         1  13.83   892.41   21.29   878.03
+# 2         1  21.29   878.03   25.91   873.18
+# ...
+```
+
+Each row shows one iteration of the GSS. The algorithm has converged when
+$|h_3 - h_0| \leq \text{tol} \cdot (|h_1| + |h_2|)$ (default tolerance = 0.1).
+
+## Common issues
+
+**`Golden()` returns a very small bandwidth (close to 5 for adaptive):**
+The criterion is monotonically decreasing — the model improves by using fewer and
+fewer neighbours. This suggests the spatial signal is very local or that the global
+model already fits well. Try `globalmin = TRUE` and `bandwidth = "aic"` to add a
+complexity penalty.
+
+**Convergence warnings from the zero-inflation part:**
+Increase `maxg` or set `force = FALSE` to let the function automatically fall back
+to a non-zero-inflated model.
+
+**Very long runtime:**
+`Golden()` re-fits the full GWR model at each candidate $h$. For $N > 200$ and
+a ZINB model, each evaluation can take minutes. Use `globalmin = FALSE` for a
+quick diagnostic run, then `globalmin = TRUE` for the final search.

@@ -1,0 +1,197 @@
+# Visualization {#sec-visualizacao}
+
+`gwzinbr()` returns estimates as plain matrices. To produce maps, you need to
+join these back to a spatial object (`sf`) that holds the geometry of each unit.
+This chapter shows the complete workflow.
+
+```{r}
+#| label: setup-viz
+#| cache: false
+#| eval: false
+
+library(gwzinbr)
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+## Joining results to an sf object
+
+```{r}
+#| label: join-sf
+#| eval: false
+
+# Assume: dados_sf  = sf object (one row per district, same row order as model data)
+#         mod       = fitted gwzinbr object
+#         dados_modelo = plain data.frame used for fitting
+
+# 1. Extract local coefficients
+coefs <- as.data.frame(mod$gwr_param_estimates)
+
+# 2. Extract t-test p-values
+pvals <- as.data.frame(mod$t_test_gwr_param_estimates)
+
+# 3. Extract residuals (deviance)
+coefs$residuos <- mod$residuals[, 3]
+
+# 4. Extract alpha (overdispersion)
+coefs$alpha <- mod$alpha_estimates[, 1]
+
+# 5. Join to sf
+dados_sf <- bind_cols(dados_sf, coefs, pvals)
+```
+
+## Mapping local coefficients (masking non-significant)
+
+The most informative GWR map shows **only statistically significant local estimates**,
+masking non-significant districts in grey.
+
+```{r}
+#| label: mapa-coef
+#| eval: false
+
+# Helper: mask non-significant estimates
+mask_insig <- function(estimate, pvalue, alpha = 0.10) {
+  ifelse(pvalue < alpha, estimate, NA_real_)
+}
+
+dados_sf <- dados_sf %>%
+  mutate(
+    beta_x1_sig = mask_insig(x1, x1_pvalue, alpha = 0.10),
+    beta_x2_sig = mask_insig(x2, x2_pvalue, alpha = 0.10)
+  )
+
+# Map for predictor x1
+ggplot(dados_sf) +
+  geom_sf(aes(fill = beta_x1_sig), color = "grey70", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low      = "#2166ac",
+    mid      = "white",
+    high     = "#b2182b",
+    midpoint = 0,
+    na.value = "grey85",
+    name     = expression(hat(beta)[x1])
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text  = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_line(color = "grey90")
+  ) +
+  labs(title = "Local coefficient — x1",
+       subtitle = "Grey = not significant at 10%")
+```
+
+## Mapping residuals
+
+```{r}
+#| label: mapa-residuos
+#| eval: false
+
+ggplot(dados_sf) +
+  geom_sf(aes(fill = residuos), color = "grey70", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low      = "#2166ac",
+    mid      = "white",
+    high     = "#b2182b",
+    midpoint = 0,
+    name     = "Deviance\nresidual"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Spatial distribution of deviance residuals — GWR-NB")
+```
+
+Residuals should appear spatially random after a well-fitted GWR model.
+Clusters of large positive or negative residuals suggest missing covariates
+or inappropriate bandwidth.
+
+## Mapping the overdispersion parameter (alpha)
+
+```{r}
+#| label: mapa-alpha
+#| eval: false
+
+ggplot(dados_sf) +
+  geom_sf(aes(fill = alpha), color = "grey70", linewidth = 0.2) +
+  scale_fill_viridis_c(name = expression(hat(alpha)), option = "plasma") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Local overdispersion parameter (α)",
+       subtitle = "Higher α = more unexplained variability")
+```
+
+Regions with high $\hat{\alpha}$ are where the model fits poorly — the count
+variance is much larger than predicted. These may warrant investigation for
+missing spatial confounders.
+
+## Multi-panel coefficient map
+
+```{r}
+#| label: mapa-multi
+#| eval: false
+
+library(patchwork)
+
+make_coef_map <- function(df, col, pval_col, title, alpha = 0.10) {
+  df <- df %>%
+    mutate(coef_sig = mask_insig(.data[[col]], .data[[pval_col]], alpha))
+
+  ggplot(df) +
+    geom_sf(aes(fill = coef_sig), color = "grey70", linewidth = 0.15) +
+    scale_fill_gradient2(
+      low = "#2166ac", mid = "white", high = "#b2182b",
+      midpoint = 0, na.value = "grey85", name = NULL
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+    labs(title = title)
+}
+
+p1 <- make_coef_map(dados_sf, "x1", "x1_pvalue", "x1")
+p2 <- make_coef_map(dados_sf, "x2", "x2_pvalue", "x2")
+p3 <- make_coef_map(dados_sf, "x3", "x3_pvalue", "x3")
+p4 <- make_coef_map(dados_sf, "x4", "x4_pvalue", "x4")
+
+(p1 | p2) / (p3 | p4)
+```
+
+## Descriptive summary of local estimates
+
+```{r}
+#| label: summary-coefs
+#| eval: false
+
+# Quick summary table (no mapping needed)
+mod$descript_stats_gwr_param_estimates
+#            Mean      SD     Min    Q25    Median   Q75    Max
+# (Intercept) ...
+# x1          ...
+# x2          ...
+```
+
+This table is useful in publications when space is limited and you want to
+communicate the range of local variation for each predictor.
+
+## Convergence plot for bandwidth selection
+
+After running `Golden()`, visualise the criterion as a function of bandwidth:
+
+```{r}
+#| label: gss-convergence-plot
+#| eval: false
+
+# Assume gss is the output of Golden()
+iter <- gss$iterations
+
+ggplot(iter, aes(x = h1, y = aic1)) +
+  geom_point(color = "#2171b5", size = 2) +
+  geom_point(aes(x = h2, y = aic2), color = "#b2182b", size = 2) +
+  geom_vline(xintercept = gss$min_bandwidth, linetype = "dashed") +
+  scale_x_continuous(name = "Bandwidth (h)") +
+  scale_y_continuous(name = "AICc") +
+  theme_minimal() +
+  labs(title = "Golden Section Search convergence",
+       subtitle = paste("Optimal h =", gss$min_bandwidth))
+```

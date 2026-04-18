@@ -1,0 +1,345 @@
+# Case Study: COVID-19 in South Korea {#sec-estudo-caso}
+
+This chapter presents a complete, reproducible analysis using the built-in
+`southkorea_covid19` dataset. We follow the workflow from @sec-workflow:
+check for overdispersion and excess zeros, fit a global NB as a reference,
+assess spatial autocorrelation, select the bandwidth with `Golden()`, fit the
+GWR-NB with `gwzinbr()`, and evaluate the results.
+
+## The dataset
+
+```{r}
+#| label: dataset-overview
+#| cache: false
+
+library(gwzinbr)
+library(MASS)
+library(spdep)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+data(southkorea_covid19)
+d <- southkorea_covid19
+
+cat("Observations:", nrow(d), "\n")
+cat("Variables:", ncol(d), "\n")
+cat("Column names:", paste(names(d), collapse = ", "), "\n")
+```
+
+```{r}
+#| label: dataset-head
+#| tbl-cap: "First rows of the southkorea_covid19 dataset."
+
+head(d, 6) |>
+  kable(digits = 3) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+| Variable | Description |
+|----------|-------------|
+| `n_covid1` | Number of confirmed COVID-19 cases per district |
+| `Morbidity` | Chronic disease morbidity rate |
+| `high_sch_p` | Proportion of residents with high school education |
+| `Healthcare_access` | Healthcare access index |
+| `diff_sd` | Social distancing compliance score |
+| `Crowding` | Population density / crowding index |
+| `Migration` | Recent migration rate |
+| `Health_behavior` | Composite health behaviour index |
+| `x` | Longitude (decimal degrees) |
+| `y` | Latitude (decimal degrees) |
+| `ln_total` | Log of total population (offset) |
+
+## Step 1: Check overdispersion and excess zeros
+
+```{r}
+#| label: step1-checks
+#| tbl-cap: "Overdispersion check — Poisson residual deviance."
+
+# Poisson model
+mod_pois <- glm(
+  n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+             diff_sd + Crowding + Migration + Health_behavior +
+             offset(ln_total),
+  data   = d,
+  family = poisson()
+)
+
+disp_ratio <- deviance(mod_pois) / df.residual(mod_pois)
+
+data.frame(
+  Statistic = c("Residual deviance", "Degrees of freedom", "Dispersion ratio"),
+  Value     = c(round(deviance(mod_pois), 1),
+                df.residual(mod_pois),
+                round(disp_ratio, 2))
+) |> kable() |> kable_styling(full_width = FALSE)
+```
+
+::: {.callout-note}
+A dispersion ratio much larger than 1 confirms overdispersion. The Negative
+Binomial distribution is appropriate.
+:::
+
+```{r}
+#| label: step1-zeros
+#| tbl-cap: "Excess zeros check — observed vs expected under NB."
+
+# Fit global NB
+mod_nb_global <- glm.nb(
+  n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+             diff_sd + Crowding + Migration + Health_behavior +
+             offset(ln_total),
+  data = d
+)
+
+mu_hat <- predict(mod_nb_global, type = "response")
+theta  <- mod_nb_global$theta
+
+zeros_obs <- sum(d$n_covid1 == 0)
+zeros_exp <- round(sum((theta / (theta + mu_hat))^theta), 1)
+
+data.frame(
+  ` ` = c("Observed zeros", "Expected zeros (NB)", "Ratio"),
+  Value = c(zeros_obs, zeros_exp, round(zeros_obs / zeros_exp, 2))
+) |> kable(col.names = c("", "Value")) |>
+     kable_styling(full_width = FALSE)
+```
+
+## Step 2: Global NB model (reference)
+
+```{r}
+#| label: step2-nb-coefs
+#| tbl-cap: "Coefficients — Global Negative Binomial model."
+
+broom::tidy(mod_nb_global) |>
+  mutate(across(where(is.numeric), ~round(., 4)),
+         p.value = formatC(p.value, format = "e", digits = 2)) |>
+  kable() |> kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+```{r}
+#| label: step2-nb-gof
+#| tbl-cap: "Goodness-of-fit — Global NB."
+
+ll   <- as.numeric(logLik(mod_nb_global))
+ll0  <- as.numeric(logLik(update(mod_nb_global, . ~ 1)))
+k    <- length(coef(mod_nb_global))
+n    <- nobs(mod_nb_global)
+aicc <- AIC(mod_nb_global) + 2 * k * (k + 1) / (n - k - 1)
+
+data.frame(
+  Statistic = c("Log-likelihood", "Pseudo-R² (McFadden)", "AIC", "AICc",
+                "Theta (overdispersion)"),
+  Value     = round(c(ll, 1 - ll / ll0, AIC(mod_nb_global), aicc,
+                      mod_nb_global$theta), 3)
+) |> kable() |> kable_styling(full_width = FALSE)
+```
+
+## Step 3: Spatial autocorrelation in residuals
+
+```{r}
+#| label: step3-moran
+#| tbl-cap: "Moran's I test on global NB deviance residuals."
+#| cache: true
+
+coords <- cbind(d$x, d$y)
+knn    <- knn2nb(knearneigh(coords, k = 4))
+lw     <- nb2listw(knn, style = "W")
+
+resid_nb <- residuals(mod_nb_global, type = "deviance")
+moran_res <- moran.mc(resid_nb, listw = lw, nsim = 999)
+
+data.frame(
+  Statistic = c("Moran I", "p-value"),
+  Value     = c(round(moran_res$statistic, 4), moran_res$p.value)
+) |> kable() |> kable_styling(full_width = FALSE)
+```
+
+::: {.callout-important}
+## Spatial autocorrelation detected
+A significant Moran I confirms that the global NB model fails to capture the
+spatial structure. A Geographically Weighted model is warranted.
+:::
+
+## Step 4: Bandwidth selection with `Golden()`
+
+::: {.callout-note collapse="true"}
+## Code: Golden Section Search (computationally intensive — ~10–30 min)
+
+This code is shown for documentation purposes. The result (`h = 230`) is used
+directly in the next step.
+
+```{r}
+#| label: step4-golden
+#| eval: false
+
+gss <- Golden(
+  data       = d,
+  formula    = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+                          diff_sd + Crowding + Migration + Health_behavior,
+  lat        = "y", long = "x",
+  offset     = "ln_total",
+  model      = "negbin",
+  method     = "adaptive_bsq",
+  bandwidth  = "aic",
+  globalmin  = TRUE,
+  distancekm = TRUE,
+  force      = TRUE
+)
+
+gss$min_bandwidth  # >> 230
+gss$iterations     # convergence table
+```
+:::
+
+The search converged to an adaptive bandwidth of **h = 230 neighbours**, selected
+by AICc. This means each local regression uses the 230 nearest districts.
+
+## Step 5: Fit the GWR-NB model
+
+::: {.callout-note collapse="true"}
+## Code: GWR-NB fitting (computationally intensive — ~5–15 min)
+
+```{r}
+#| label: step5-fit
+#| eval: false
+
+mod_gwr <- gwzinbr(
+  data       = d,
+  formula    = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+                          diff_sd + Crowding + Migration + Health_behavior,
+  lat        = "y", long = "x",
+  offset     = "ln_total",
+  model      = "negbin",
+  method     = "adaptive_bsq",
+  h          = 230,
+  distancekm = TRUE,
+  force      = TRUE
+)
+
+saveRDS(mod_gwr, "_cache/mod_gwr_korea.rds")
+```
+:::
+
+```{r}
+#| label: step5-load
+#| cache: false
+
+# Load cached model (generated by script above)
+mod_path <- "_cache/mod_gwr_korea.rds"
+if (file.exists(mod_path)) {
+  mod_gwr <- readRDS(mod_path)
+} else {
+  message("Run the fitting code above and save the model to _cache/mod_gwr_korea.rds")
+}
+```
+
+## Step 6: Model comparison
+
+```{r}
+#| label: step6-compare
+#| tbl-cap: "Comparison: Global NB vs GWR-NB."
+
+if (exists("mod_gwr")) {
+  gof <- mod_gwr$measures
+  data.frame(
+    Model      = c("Global NB", "GWR-NB"),
+    AICc       = round(c(aicc, gof["AICc"]), 2),
+    `Pseudo R2` = round(c(1 - ll / ll0, gof["pct_ll"]), 3),
+    Deviance   = round(c(deviance(mod_nb_global), gof["deviance"]), 2)
+  ) |> kable(col.names = c("Model", "AICc", "Pseudo R²", "Deviance")) |>
+       kable_styling(bootstrap_options = "striped", full_width = FALSE)
+}
+```
+
+## Step 7: Local coefficients — summary
+
+```{r}
+#| label: step7-coef-summary
+#| tbl-cap: "Descriptive statistics of local GWR-NB coefficients."
+
+if (exists("mod_gwr")) {
+  as.data.frame(mod_gwr$descript_stats_gwr_param_estimates) |>
+    round(4) |>
+    kable() |>
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+}
+```
+
+```{r}
+#| label: step7-nonstat
+#| tbl-cap: "Non-stationarity test: is spatial variation significant?"
+
+if (exists("mod_gwr")) {
+  as.data.frame(mod_gwr$non_stationary_test) |>
+    mutate(across(where(is.numeric), ~round(., 4))) |>
+    kable() |>
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+}
+```
+
+## Step 8: Spatial autocorrelation in GWR-NB residuals
+
+```{r}
+#| label: step8-moran-gwr
+#| tbl-cap: "Moran's I — GWR-NB deviance residuals."
+#| cache: true
+
+if (exists("mod_gwr")) {
+  resid_gwr <- mod_gwr$residuals[, 3]
+  moran_gwr <- moran.mc(resid_gwr, listw = lw, nsim = 999)
+
+  data.frame(
+    Statistic = c("Moran I", "p-value"),
+    Value     = c(round(moran_gwr$statistic, 4), moran_gwr$p.value)
+  ) |> kable() |> kable_styling(full_width = FALSE)
+}
+```
+
+::: {.callout-tip}
+## Expected result
+A non-significant Moran I ($p > 0.05$) for the GWR-NB residuals — versus the
+significant autocorrelation found in the global NB residuals — confirms that the
+GWR model successfully absorbed the spatial structure.
+:::
+
+## Step 9: Mapping local coefficients
+
+The maps below require an `sf` object with the South Korea district geometries.
+The code assumes you have loaded it as `korea_sf`, with rows in the same order
+as `southkorea_covid19`.
+
+```{r}
+#| label: step9-maps
+#| eval: false
+
+library(sf)
+
+# Add local estimates to the sf object
+if (exists("mod_gwr") && exists("korea_sf")) {
+
+  coefs <- as.data.frame(mod_gwr$gwr_param_estimates)
+  pvals <- as.data.frame(mod_gwr$t_test_gwr_param_estimates)
+  coefs$residuos <- mod_gwr$residuals[, 3]
+  coefs$alpha    <- mod_gwr$alpha_estimates[, 1]
+
+  korea_sf <- bind_cols(korea_sf, coefs, pvals)
+
+  # Map: Crowding coefficient (significant only)
+  korea_sf <- korea_sf |>
+    mutate(Crowding_sig = ifelse(Crowding_pvalue < 0.10, Crowding, NA_real_))
+
+  ggplot(korea_sf) +
+    geom_sf(aes(fill = Crowding_sig), color = "grey70", linewidth = 0.2) +
+    scale_fill_gradient2(
+      low = "#2166ac", mid = "white", high = "#b2182b",
+      midpoint = 0, na.value = "grey85",
+      name = expression(hat(beta)[Crowding])
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+    labs(title = "Local coefficient — Crowding",
+         subtitle = "Grey = not significant at 10%")
+}
+```

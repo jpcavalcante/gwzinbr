@@ -1,0 +1,11 @@
+.RData
+.Rhistory
+.Rapp.history
+.Rproj.user/
+*.Rproj
+/.quarto/
+*_files/
+.DS_Store
+__MACOSX/
+*.log
+*.tmp
