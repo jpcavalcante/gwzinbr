@@ -1,14 +1,10 @@
-# Visualization {#sec-visualizacao}
+# Visualização {#sec-visualizacao}
 
-`gwzinbr()` returns estimates as plain matrices. To produce maps, you need to
-join these back to a spatial object (`sf`) that holds the geometry of each unit.
-This chapter shows the complete workflow.
+`gwzinbr()` retorna as estimativas como matrizes simples. Para produzir mapas,
+é necessário juntá-las de volta a um objeto espacial (`sf`) que armazena a
+geometria de cada unidade. Este capítulo mostra o fluxo completo.
 
-```{r}
-#| label: setup-viz
-#| cache: false
-#| eval: false
-
+```r
 library(gwzinbr)
 library(sf)
 library(ggplot2)
@@ -16,53 +12,47 @@ library(dplyr)
 library(scales)
 ```
 
-## Joining results to an sf object
+## Juntando os resultados a um objeto sf
 
-```{r}
-#| label: join-sf
-#| eval: false
+```r
+# Assumindo: dados_sf    = objeto sf (uma linha por distrito, mesma ordem do modelo)
+#            mod         = objeto gwzinbr ajustado
+#            dados_modelo = data.frame simples usado para o ajuste
 
-# Assume: dados_sf  = sf object (one row per district, same row order as model data)
-#         mod       = fitted gwzinbr object
-#         dados_modelo = plain data.frame used for fitting
-
-# 1. Extract local coefficients
+# 1. Extrair coeficientes locais
 coefs <- as.data.frame(mod$gwr_param_estimates)
 
-# 2. Extract t-test p-values
+# 2. Extrair p-valores do teste t
 pvals <- as.data.frame(mod$t_test_gwr_param_estimates)
 
-# 3. Extract residuals (deviance)
+# 3. Extrair resíduos (deviance)
 coefs$residuos <- mod$residuals[, 3]
 
-# 4. Extract alpha (overdispersion)
+# 4. Extrair alpha (superdispersão)
 coefs$alpha <- mod$alpha_estimates[, 1]
 
-# 5. Join to sf
+# 5. Juntar ao sf
 dados_sf <- bind_cols(dados_sf, coefs, pvals)
 ```
 
-## Mapping local coefficients (masking non-significant)
+## Mapeando coeficientes locais (mascarando não significativos)
 
-The most informative GWR map shows **only statistically significant local estimates**,
-masking non-significant districts in grey.
+O mapa GWR mais informativo exibe **apenas as estimativas locais estatisticamente
+significativas**, mascarando os distritos não significativos em cinza.
 
-```{r}
-#| label: mapa-coef
-#| eval: false
-
-# Helper: mask non-significant estimates
-mask_insig <- function(estimate, pvalue, alpha = 0.10) {
-  ifelse(pvalue < alpha, estimate, NA_real_)
+```r
+# Auxiliar: mascarar estimativas não significativas
+mascarar_insig <- function(estimativa, pvalor, alpha = 0.10) {
+  ifelse(pvalor < alpha, estimativa, NA_real_)
 }
 
 dados_sf <- dados_sf %>%
   mutate(
-    beta_x1_sig = mask_insig(x1, x1_pvalue, alpha = 0.10),
-    beta_x2_sig = mask_insig(x2, x2_pvalue, alpha = 0.10)
+    beta_x1_sig = mascarar_insig(x1, x1_pvalue, alpha = 0.10),
+    beta_x2_sig = mascarar_insig(x2, x2_pvalue, alpha = 0.10)
   )
 
-# Map for predictor x1
+# Mapa para o preditor x1
 ggplot(dados_sf) +
   geom_sf(aes(fill = beta_x1_sig), color = "grey70", linewidth = 0.2) +
   scale_fill_gradient2(
@@ -79,16 +69,13 @@ ggplot(dados_sf) +
     axis.ticks = element_blank(),
     panel.grid = element_line(color = "grey90")
   ) +
-  labs(title = "Local coefficient — x1",
-       subtitle = "Grey = not significant at 10%")
+  labs(title = "Coeficiente local — x1",
+       subtitle = "Cinza = não significativo a 10%")
 ```
 
-## Mapping residuals
+## Mapeando resíduos
 
-```{r}
-#| label: mapa-residuos
-#| eval: false
-
+```r
 ggplot(dados_sf) +
   geom_sf(aes(fill = residuos), color = "grey70", linewidth = 0.2) +
   scale_fill_gradient2(
@@ -96,47 +83,41 @@ ggplot(dados_sf) +
     mid      = "white",
     high     = "#b2182b",
     midpoint = 0,
-    name     = "Deviance\nresidual"
+    name     = "Resíduo\ndeviance"
   ) +
   theme_minimal(base_size = 13) +
   theme(axis.text = element_blank(), axis.ticks = element_blank()) +
-  labs(title = "Spatial distribution of deviance residuals — GWR-NB")
+  labs(title = "Distribuição espacial dos resíduos deviance — GWR-NB")
 ```
 
-Residuals should appear spatially random after a well-fitted GWR model.
-Clusters of large positive or negative residuals suggest missing covariates
-or inappropriate bandwidth.
+Os resíduos devem aparecer espacialmente aleatórios após um modelo GWR bem
+ajustado. Agrupamentos de resíduos positivos ou negativos grandes sugerem
+covariáveis ausentes ou largura de banda inadequada.
 
-## Mapping the overdispersion parameter (alpha)
+## Mapeando o parâmetro de superdispersão (alpha)
 
-```{r}
-#| label: mapa-alpha
-#| eval: false
-
+```r
 ggplot(dados_sf) +
   geom_sf(aes(fill = alpha), color = "grey70", linewidth = 0.2) +
   scale_fill_viridis_c(name = expression(hat(alpha)), option = "plasma") +
   theme_minimal(base_size = 13) +
   theme(axis.text = element_blank(), axis.ticks = element_blank()) +
-  labs(title = "Local overdispersion parameter (α)",
-       subtitle = "Higher α = more unexplained variability")
+  labs(title = "Parâmetro local de superdispersão (α)",
+       subtitle = "α maior = mais variabilidade não explicada")
 ```
 
-Regions with high $\hat{\alpha}$ are where the model fits poorly — the count
-variance is much larger than predicted. These may warrant investigation for
-missing spatial confounders.
+Regiões com $\hat{\alpha}$ alto são onde o modelo se ajusta mal — a variância
+das contagens é muito maior do que o previsto. Essas regiões podem justificar
+investigação de confundidores espaciais ausentes.
 
-## Multi-panel coefficient map
+## Mapa multi-painel de coeficientes
 
-```{r}
-#| label: mapa-multi
-#| eval: false
-
+```r
 library(patchwork)
 
-make_coef_map <- function(df, col, pval_col, title, alpha = 0.10) {
+mapa_coef <- function(df, col, pval_col, titulo, alpha = 0.10) {
   df <- df %>%
-    mutate(coef_sig = mask_insig(.data[[col]], .data[[pval_col]], alpha))
+    mutate(coef_sig = mascarar_insig(.data[[col]], .data[[pval_col]], alpha))
 
   ggplot(df) +
     geom_sf(aes(fill = coef_sig), color = "grey70", linewidth = 0.15) +
@@ -146,52 +127,46 @@ make_coef_map <- function(df, col, pval_col, title, alpha = 0.10) {
     ) +
     theme_minimal(base_size = 11) +
     theme(axis.text = element_blank(), axis.ticks = element_blank()) +
-    labs(title = title)
+    labs(title = titulo)
 }
 
-p1 <- make_coef_map(dados_sf, "x1", "x1_pvalue", "x1")
-p2 <- make_coef_map(dados_sf, "x2", "x2_pvalue", "x2")
-p3 <- make_coef_map(dados_sf, "x3", "x3_pvalue", "x3")
-p4 <- make_coef_map(dados_sf, "x4", "x4_pvalue", "x4")
+p1 <- mapa_coef(dados_sf, "x1", "x1_pvalue", "x1")
+p2 <- mapa_coef(dados_sf, "x2", "x2_pvalue", "x2")
+p3 <- mapa_coef(dados_sf, "x3", "x3_pvalue", "x3")
+p4 <- mapa_coef(dados_sf, "x4", "x4_pvalue", "x4")
 
 (p1 | p2) / (p3 | p4)
 ```
 
-## Descriptive summary of local estimates
+## Resumo descritivo das estimativas locais
 
-```{r}
-#| label: summary-coefs
-#| eval: false
-
-# Quick summary table (no mapping needed)
+```r
+# Tabela de resumo rápido (sem necessidade de mapeamento)
 mod$descript_stats_gwr_param_estimates
-#            Mean      SD     Min    Q25    Median   Q75    Max
-# (Intercept) ...
-# x1          ...
-# x2          ...
+#              Média      DP     Mín    Q25   Mediana   Q75    Máx
+# (Intercept)  ...
+# x1           ...
+# x2           ...
 ```
 
-This table is useful in publications when space is limited and you want to
-communicate the range of local variation for each predictor.
+Esta tabela é útil em publicações quando o espaço é limitado e você quer
+comunicar a amplitude da variação local para cada preditor.
 
-## Convergence plot for bandwidth selection
+## Gráfico de convergência para seleção da largura de banda
 
-After running `Golden()`, visualise the criterion as a function of bandwidth:
+Após executar `Golden()`, visualize o critério em função da largura de banda:
 
-```{r}
-#| label: gss-convergence-plot
-#| eval: false
-
-# Assume gss is the output of Golden()
+```r
+# Assumindo que gss é a saída de Golden()
 iter <- gss$iterations
 
 ggplot(iter, aes(x = h1, y = aic1)) +
   geom_point(color = "#2171b5", size = 2) +
   geom_point(aes(x = h2, y = aic2), color = "#b2182b", size = 2) +
   geom_vline(xintercept = gss$min_bandwidth, linetype = "dashed") +
-  scale_x_continuous(name = "Bandwidth (h)") +
+  scale_x_continuous(name = "Largura de banda (h)") +
   scale_y_continuous(name = "AICc") +
   theme_minimal() +
-  labs(title = "Golden Section Search convergence",
-       subtitle = paste("Optimal h =", gss$min_bandwidth))
+  labs(title = "Convergência da Busca em Seção Áurea",
+       subtitle = paste("h ótimo =", gss$min_bandwidth))
 ```

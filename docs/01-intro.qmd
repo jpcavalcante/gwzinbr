@@ -1,84 +1,86 @@
-# Introduction
+# Introdução
 
-## Motivation
+## Motivação
 
-Count data — integer values representing the number of times an event occurs in
-a fixed region or time period — appear frequently in public health, criminology,
-ecology, and urban studies. Standard linear regression is inappropriate for counts
-because it can produce negative predictions and assumes normally distributed errors.
-The natural starting point is the **Poisson** regression, but it imposes a restrictive
-assumption: the mean equals the variance (equidispersion).
+Dados de contagem — valores inteiros que representam o número de vezes que um
+evento ocorre em uma região ou período fixo — aparecem frequentemente em saúde
+pública, criminologia, ecologia e estudos urbanos. A regressão linear padrão
+é inadequada para contagens, pois pode produzir previsões negativas e pressupõe
+erros com distribuição normal. O ponto de partida natural é a regressão de
+**Poisson**, mas ela impõe uma suposição restritiva: a média é igual à variância
+(equidispersão).
 
-Real-world count data routinely violate this assumption in two ways:
+Dados de contagem do mundo real violam essa suposição de duas formas:
 
-1. **Overdispersion**: the variance exceeds the mean, often because unmeasured
-   heterogeneity inflates variability between units.
-2. **Excess zeros**: the proportion of zero counts is larger than what any
-   single Poisson or Negative Binomial distribution can explain — usually because
-   two distinct processes generate the data (a structural-zero process and a
-   count process).
+1. **Superdispersão**: a variância supera a média, frequentemente devido a
+   heterogeneidade não observada que amplifica a variabilidade entre unidades.
+2. **Excesso de zeros**: a proporção de contagens zero é maior do que qualquer
+   distribuição Poisson ou Binomial Negativa simples pode explicar — geralmente
+   porque dois processos distintos geram os dados (um processo de zeros
+   estruturais e um processo de contagem).
 
-Beyond the distributional question, spatial data face a third challenge: the
-**spatial non-stationarity** of relationships. A covariate that strongly predicts
-counts in one region may be irrelevant in another. A single global regression
-coefficient cannot capture this heterogeneity.
+Além da questão distribucional, dados espaciais enfrentam um terceiro desafio:
+a **não-estacionariedade espacial** das relações. Uma covariável que prediz
+fortemente as contagens em uma região pode ser irrelevante em outra. Um único
+coeficiente global de regressão não consegue capturar essa heterogeneidade.
 
-**gwzinbr** addresses all three challenges simultaneously by fitting
-**Geographically Weighted** versions of the Poisson, Negative Binomial, ZIP, and
-ZINB regression models.
+O **gwzinbr** aborda os três desafios simultaneamente, ajustando versões
+**Geograficamente Ponderadas** dos modelos de regressão Poisson, Binomial
+Negativa, ZIP e ZINB.
 
-## When to use gwzinbr
+## Quando usar o gwzinbr
 
-Use the functions in this package when:
+Use as funções deste pacote quando:
 
-- Your response is a **non-negative integer count**.
-- Your observations are **georeferenced** (each row has a latitude/longitude or
-  equivalent spatial coordinate).
-- You suspect the relationship between predictors and the response **varies across
-  space** (spatial non-stationarity).
+- Sua variável resposta é uma **contagem inteira não negativa**.
+- Suas observações são **georreferenciadas** (cada linha possui latitude/longitude
+  ou coordenadas espaciais equivalentes).
+- Você suspeita que a relação entre os preditores e a resposta **varia no espaço**
+  (não-estacionariedade espacial).
 
-Use the **ZINB** variant (`model = "zinb"`) additionally when:
+Use a variante **ZINB** (`model = "zinb"`) adicionalmente quando:
 
-- The count distribution shows **overdispersion** (variance > mean).
-- The data contain **more zeros** than the Negative Binomial distribution predicts.
+- A distribuição de contagens apresenta **superdispersão** (variância > média).
+- Os dados contêm **mais zeros** do que a distribuição Binomial Negativa prediz.
 
-## Recommended workflow {#sec-workflow}
+## Fluxo de trabalho recomendado {#sec-workflow}
 
-The figure below summarises the decision path from raw data to a fitted GWZINBR model.
+O diagrama abaixo resume o caminho de decisão desde os dados brutos até um
+modelo GWZINBR ajustado.
 
 ```
-Raw count data
-      │
-      ▼
-Check overdispersion ──── equidispersed? ──► GWR-Poisson
-      │ overdispersed
-      ▼
-Check excess zeros ──── no excess zeros? ──► GWNBR (model = "negbin")
-      │ excess zeros
-      ▼
-Check spatial autocorrelation in global NB residuals
-      │ significant Moran I
-      ▼
-Select bandwidth  ◄── Golden()
-      │
-      ▼
-Fit model ◄── gwzinbr(model = "zinb")
-      │
-      ▼
-Diagnostics + visualization
+Dados de contagem brutos
+         │
+         ▼
+Verificar superdispersão ──── equidisperso? ──► GWR-Poisson
+         │ superdisperso
+         ▼
+Verificar excesso de zeros ──── sem excesso? ──► GWNBR (model = "negbin")
+         │ com excesso de zeros
+         ▼
+Verificar autocorrelação espacial nos resíduos do NB global
+         │ I de Moran significativo
+         ▼
+Selecionar largura de banda  ◄── Golden()
+         │
+         ▼
+Ajustar modelo ◄── gwzinbr(model = "zinb")
+         │
+         ▼
+Diagnósticos + visualização
 ```
 
-## Package overview
+## Visão geral do pacote
 
-The package exports two main functions:
+O pacote exporta duas funções principais:
 
-| Function | Purpose |
-|----------|---------|
-| `Golden()` | Golden Section Search for the optimal bandwidth $h$ |
-| `gwzinbr()` | Fit a geographically weighted count model |
+| Função | Finalidade |
+|--------|-----------|
+| `Golden()` | Busca em Seção Áurea para a largura de banda ótima $h$ |
+| `gwzinbr()` | Ajusta um modelo de contagem geograficamente ponderado |
 
-A built-in dataset is also provided:
+Um dataset embutido também é fornecido:
 
-| Dataset | Description |
-|---------|-------------|
-| `southkorea_covid19` | COVID-19 case counts across 250 districts of South Korea |
+| Dataset | Descrição |
+|---------|-----------|
+| `southkorea_covid19` | Contagens de casos de COVID-19 em 229 distritos da Coreia do Sul |

@@ -1,104 +1,94 @@
-# Diagnostics {#sec-diagnosticos}
+# Diagnósticos {#sec-diagnosticos}
 
-After fitting a `gwzinbr()` model, four types of diagnostic questions arise:
+Após ajustar um modelo `gwzinbr()`, quatro tipos de questões diagnósticas surgem:
 
-1. **Is the model well-calibrated?** — goodness-of-fit measures
-2. **Are the residuals spatially random?** — Moran I test
-3. **Does spatial variation matter?** — non-stationarity tests
-4. **Was zero-inflation necessary?** — zero excess check
+1. **O modelo está bem calibrado?** — medidas de qualidade do ajuste
+2. **Os resíduos são espacialmente aleatórios?** — teste I de Moran
+3. **A variação espacial é relevante?** — testes de não-estacionariedade
+4. **A inflação de zeros era necessária?** — verificação de excesso de zeros
 
-## Goodness-of-fit
+## Qualidade do ajuste
 
-```{r}
-#| label: gof-demo
-#| eval: false
-
+```r
 mod$measures
 #   deviance       AIC      AICc    pct_ll adj_pct_ll
 #     94.83    745.26    756.76      0.93       0.90
 ```
 
-Compare the GWR model against the global Negative Binomial:
+Compare o modelo GWR com a Binomial Negativa global:
 
-| Metric | Global NB | GWR-NB | Interpretation |
-|--------|-----------|--------|----------------|
-| AICc | higher | lower | GWR fits better |
-| Deviance | higher | lower | Less unexplained variation |
-| Pseudo-R² | lower | higher | More variance explained |
+| Métrica | NB Global | GWR-NB | Interpretação |
+|---------|-----------|--------|---------------|
+| AICc | maior | menor | GWR ajusta melhor |
+| Desvio | maior | menor | Menos variação não explicada |
+| Pseudo-R² | menor | maior | Mais variância explicada |
 
-A pseudo-R² above 0.9 for the GWR model (versus, say, 0.18 for the global model)
-indicates dramatic improvement from allowing spatially varying coefficients.
+Um pseudo-R² acima de 0,9 para o modelo GWR (em comparação com, digamos, 0,18
+para o modelo global) indica melhora dramática ao permitir coeficientes
+espacialmente variáveis.
 
-## Spatial autocorrelation in residuals
+## Autocorrelação espacial nos resíduos
 
-The Moran I test checks whether the residuals from the fitted model show a
-spatial pattern. Significant positive autocorrelation in GWR residuals would
-suggest the bandwidth is too large (over-smoothing).
+O teste I de Moran verifica se os resíduos do modelo ajustado apresentam padrão
+espacial. Autocorrelação positiva significativa nos resíduos da GWR sugeriria
+que a largura de banda é muito grande (super-suavização).
 
-```{r}
-#| label: moran-residuals
-#| eval: false
-
+```r
 library(spdep)
 library(gwzinbr)
 data(southkorea_covid19)
 
-# Assume mod is already fitted
+# Assumindo que mod já foi ajustado
 resid_deviance <- mod$residuals[, 3]
 
-# Build spatial weights (k-NN with k = 4)
+# Construir pesos espaciais (k-NN com k = 4)
 coords <- cbind(southkorea_covid19$x, southkorea_covid19$y)
 knn    <- knn2nb(knearneigh(coords, k = 4))
 lw     <- nb2listw(knn, style = "W")
 
-# Moran test (Monte Carlo)
+# Teste de Moran (Monte Carlo)
 moran.mc(resid_deviance, listw = lw, nsim = 999)
 ```
 
-**Interpreting the result:**
+**Interpretando o resultado:**
 
-| Moran I | p-value | Interpretation |
-|---------|---------|----------------|
-| $\approx 0$ | $> 0.05$ | Residuals are spatially random — GWR has removed spatial structure ✓ |
-| $> 0$ | $< 0.05$ | Positive clustering remains — consider smaller $h$ or additional covariates |
-| $< 0$ | $< 0.05$ | Negative autocorrelation — bandwidth may be too small |
+| I de Moran | p-valor | Interpretação |
+|------------|---------|---------------|
+| $\approx 0$ | $> 0,05$ | Resíduos espacialmente aleatórios — GWR removeu a estrutura espacial ✓ |
+| $> 0$ | $< 0,05$ | Agrupamento positivo permanece — considere $h$ menor ou covariáveis adicionais |
+| $< 0$ | $< 0,05$ | Autocorrelação negativa — largura de banda pode ser muito pequena |
 
-## Non-stationarity test {#sec-nonstationarity}
+## Teste de não-estacionariedade {#sec-nonstationarity}
 
-The non-stationarity test assesses, for each predictor, whether the spatial
-variation in local coefficients is statistically significant.
+O teste de não-estacionariedade avalia, para cada preditor, se a variação
+espacial nos coeficientes locais é estatisticamente significativa.
 
-```{r}
-#| label: nonstat-demo
-#| eval: false
-
+```r
 mod$non_stationary_test
-#            variable   F_stat  df1    df2  p_value
-# (Intercept)           2.341   4.2   91.8    0.032
-# Morbidity             3.112   4.2   91.8    0.004
-# high_sch_p            1.067   4.2   91.8    0.390
+#              variavel   F_stat  gl1    gl2  p_valor
+# (Intercept)             2.341   4.2   91.8    0.032
+# Morbidity               3.112   4.2   91.8    0.004
+# high_sch_p              1.067   4.2   91.8    0.390
 # ...
 ```
 
-A covariate with a **non-significant** non-stationarity test could potentially be
-modelled with a global (fixed) coefficient. Some authors use this to build
-**mixed GWR models** where some coefficients are global and others are local —
-though this requires a separate modelling step not currently in `gwzinbr`.
+Uma covariável com teste de não-estacionariedade **não significativo** poderia
+potencialmente ser modelada com um coeficiente global (fixo). Alguns autores
+usam isso para construir **modelos GWR mistos**, onde alguns coeficientes são
+globais e outros são locais — embora isso requeira uma etapa de modelagem
+separada não disponível atualmente no `gwzinbr`.
 
-## Zero-inflation check {#sec-zero-check}
+## Verificação de excesso de zeros {#sec-zero-check}
 
-Before fitting a zero-inflated model, compare observed zeros to those expected
-under the Negative Binomial distribution:
+Antes de ajustar um modelo inflacionado de zeros, compare os zeros observados
+com os esperados sob a distribuição Binomial Negativa:
 
-```{r}
-#| label: zero-check
-#| eval: false
-
+```r
 library(MASS)
 data(southkorea_covid19)
 d <- southkorea_covid19
 
-# Fit global NB
+# Ajustar BN global
 mod_nb_global <- glm.nb(
   n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
              diff_sd + Crowding + Migration + Health_behavior +
@@ -110,34 +100,31 @@ mu_hat <- predict(mod_nb_global, type = "response")
 theta  <- mod_nb_global$theta
 
 zeros_obs <- sum(d$n_covid1 == 0)
-zeros_exp <- sum((theta / (theta + mu_hat))^theta)
+zeros_esp <- sum((theta / (theta + mu_hat))^theta)
 
-cat("Observed zeros:", zeros_obs, "\n")
-cat("Expected zeros (NB):", round(zeros_exp, 1), "\n")
-cat("Ratio:", round(zeros_obs / zeros_exp, 3), "\n")
+cat("Zeros observados:", zeros_obs, "\n")
+cat("Zeros esperados (BN):", round(zeros_esp, 1), "\n")
+cat("Razão:", round(zeros_obs / zeros_esp, 3), "\n")
 ```
 
-**Decision rule:**
+**Regra de decisão:**
 
-- Ratio close to 1 (observed ≈ expected): Negative Binomial is sufficient.
+- Razão próxima de 1 (observado ≈ esperado): a Binomial Negativa é suficiente.
   Use `model = "negbin"`.
-- Ratio substantially > 1: excess zeros present. Use `model = "zinb"` with
-  `force = TRUE`.
+- Razão substancialmente > 1: excesso de zeros presente. Use `model = "zinb"`
+  com `force = TRUE`.
 
 ::: {.callout-note}
-`gwzinbr()` performs this check internally and prints a message. The
-`force = TRUE` argument bypasses the automatic fallback.
+`gwzinbr()` realiza essa verificação internamente e exibe uma mensagem. O
+argumento `force = TRUE` ignora a reversão automática.
 :::
 
-## Comparing global vs. GWR model
+## Comparação entre modelo global e GWR
 
-A complete comparison table can be assembled as follows:
+Uma tabela de comparação completa pode ser montada da seguinte forma:
 
-```{r}
-#| label: compare-models
-#| eval: false
-
-# Global NB (from MASS)
+```r
+# NB global (do MASS)
 ll_global <- as.numeric(logLik(mod_nb_global))
 ll0       <- as.numeric(logLik(update(mod_nb_global, . ~ 1)))
 k_global  <- length(coef(mod_nb_global))
@@ -151,9 +138,9 @@ r2_global   <- 1 - ll_global / ll0
 gof <- mod$measures
 
 data.frame(
-  Model    = c("Global NB", "GWR-NB"),
-  AICc     = round(c(aicc_global, gof["AICc"]), 2),
+  Modelo    = c("NB Global", "GWR-NB"),
+  AICc      = round(c(aicc_global, gof["AICc"]), 2),
   Pseudo_R2 = round(c(r2_global,  gof["pct_ll"]), 3),
-  Deviance = round(c(deviance(mod_nb_global), gof["deviance"]), 2)
+  Desvio    = round(c(deviance(mod_nb_global), gof["deviance"]), 2)
 )
 ```
