@@ -33,26 +33,21 @@ jobs:
             libcurl4-openssl-dev libssl-dev libxml2-dev \
             libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
-      - name: Cache R packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.R_LIBS_USER }}
-          key: r-pkgs-${{ hashFiles('.github/workflows/render-quarto.yml') }}
-          restore-keys: r-pkgs-
-
       - name: Install R packages
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Rscript -e '
             pkgs <- c(
-              "tidyverse", "MASS", "spdep", "sp",
-              "rmarkdown", "knitr", "kableExtra", "broom", "dplyr",
+              "rmarkdown", "tidyverse", "MASS", "spdep", "sp",
+              "knitr", "kableExtra", "broom", "dplyr",
               "ggplot2", "scales", "patchwork", "remotes"
             )
             missing <- pkgs[!pkgs %in% installed.packages()[,"Package"]]
-            if (length(missing)) install.packages(missing, repos = "https://cloud.r-project.org")
-
+            if (length(missing)) {
+              message("Installing: ", paste(missing, collapse = ", "))
+              install.packages(missing, repos = "https://cloud.r-project.org")
+            }
             if (!"gwzinbr" %in% installed.packages()[,"Package"]) {
               remotes::install_github(
                 "julianamrosa/gwzinbr",
@@ -68,17 +63,6 @@ jobs:
 
       - name: Render Quarto Book
         run: quarto render docs/
-
-      - name: Debug — show what was rendered
-        run: |
-          echo "=== repo root ==="
-          ls -la
-          echo "=== docs/ ==="
-          ls -la docs/ || echo "docs/ missing"
-          echo "=== docs/docs/ ==="
-          ls -la docs/docs/ || echo "docs/docs/ MISSING"
-          echo "=== docs/_book/ ==="
-          ls -la docs/_book/ || echo "docs/_book/ MISSING"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
