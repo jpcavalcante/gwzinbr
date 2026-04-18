@@ -16,6 +16,9 @@ concurrency:
 jobs:
   render:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,45 +29,35 @@ jobs:
           r-version: "4.4"
           use-public-rspm: true
 
-      - name: System dependencies
+      - name: Install system libraries
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
             libcurl4-openssl-dev libssl-dev libxml2-dev \
             libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
-      - name: Install R packages
-        env:
-          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          Rscript -e '
-            pkgs <- c(
-              "rmarkdown", "tidyverse", "MASS", "spdep", "sp",
-              "knitr", "kableExtra", "broom", "dplyr",
-              "ggplot2", "scales", "patchwork", "remotes"
-            )
-            missing <- pkgs[!pkgs %in% installed.packages()[,"Package"]]
-            if (length(missing)) {
-              message("Installing: ", paste(missing, collapse = ", "))
-              install.packages(missing, repos = "https://cloud.r-project.org")
-            }
-            if (!"gwzinbr" %in% installed.packages()[,"Package"]) {
-              remotes::install_github(
-                "julianamrosa/gwzinbr",
-                auth_token = Sys.getenv("GITHUB_PAT"),
-                quiet      = FALSE,
-                upgrade    = "never"
-              )
-            }
-          '
+      - name: Install R packages (via pak)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::rmarkdown
+            any::knitr
+            any::kableExtra
+            any::broom
+            any::ggplot2
+            any::scales
+            any::patchwork
+            any::MASS
+            any::spdep
+            any::tidyverse
+            any::remotes
 
-	- name: Setup Quarto
+      - name: Install gwzinbr from GitHub
+        run: |
+          Rscript -e 'remotes::install_github("julianamrosa/gwzinbr", upgrade = "never", quiet = FALSE)'
+
+      - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
-
-      - name: Force-install rmarkdown
-        run: |
-          Rscript -e 'install.packages("rmarkdown", repos = "https://cloud.r-project.org")'
-          Rscript -e 'cat("rmarkdown path:", find.package("rmarkdown"), "\n")'
 
       - name: Render Quarto Book
         run: quarto render docs/
