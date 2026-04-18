@@ -47,7 +47,7 @@ jobs:
           Rscript -e '
             pkgs <- c(
               "tidyverse", "MASS", "spdep", "sp",
-              "knitr", "kableExtra", "broom", "dplyr",
+              "rmarkdown", "knitr", "kableExtra", "broom", "dplyr",
               "ggplot2", "scales", "patchwork", "remotes"
             )
             missing <- pkgs[!pkgs %in% installed.packages()[,"Package"]]
@@ -86,7 +86,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/docs
+          path: docs/_book
 
       - name: Deploy to GitHub Pages
         id: deployment
