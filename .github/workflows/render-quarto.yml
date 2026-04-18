@@ -66,15 +66,19 @@ jobs:
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Cache Quarto computations
-        uses: actions/cache@v4
-        with:
-          path: docs/_cache/
-          key: quarto-cache-${{ hashFiles('docs/**/*.qmd') }}
-          restore-keys: quarto-cache-
-
       - name: Render Quarto Book
         run: quarto render docs/
+
+      - name: Debug — show what was rendered
+        run: |
+          echo "=== repo root ==="
+          ls -la
+          echo "=== docs/ ==="
+          ls -la docs/ || echo "docs/ missing"
+          echo "=== docs/docs/ ==="
+          ls -la docs/docs/ || echo "docs/docs/ MISSING"
+          echo "=== docs/_book/ ==="
+          ls -la docs/_book/ || echo "docs/_book/ MISSING"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
