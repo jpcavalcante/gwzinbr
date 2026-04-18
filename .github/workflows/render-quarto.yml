@@ -58,8 +58,13 @@ jobs:
             }
           '
 
-      - name: Setup Quarto
+	- name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Force-install rmarkdown
+        run: |
+          Rscript -e 'install.packages("rmarkdown", repos = "https://cloud.r-project.org")'
+          Rscript -e 'cat("rmarkdown path:", find.package("rmarkdown"), "\n")'
 
       - name: Render Quarto Book
         run: quarto render docs/
