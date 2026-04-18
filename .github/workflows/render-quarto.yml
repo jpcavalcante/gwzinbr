@@ -73,7 +73,7 @@ jobs:
           restore-keys: quarto-cache-
 
       - name: Render Quarto Book
-        run: cd docs && quarto render
+        run: quarto render docs/
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -83,3 +83,4 @@ jobs:
           publish_dir: ./docs/docs
           publish_branch: gh-pages
           force_orphan: true
+          enable_jekyll: false
