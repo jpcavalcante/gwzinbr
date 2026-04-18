@@ -68,18 +68,18 @@ jobs:
       - name: Cache Quarto computations
         uses: actions/cache@v4
         with:
-          path: _cache/
-          key: quarto-cache-${{ hashFiles('**/*.qmd') }}
+          path: docs/_cache/
+          key: quarto-cache-${{ hashFiles('docs/**/*.qmd') }}
           restore-keys: quarto-cache-
 
       - name: Render Quarto Book
-        run: quarto render
+        run: cd docs && quarto render
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          publish_dir: ./docs/docs
           publish_branch: gh-pages
           force_orphan: true
