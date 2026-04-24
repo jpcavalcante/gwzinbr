@@ -1,129 +1,129 @@
-# Data Preparation
+# Preparação dos Dados
 
-## Required data structure
+## Estrutura de dados necessária
 
-Both `Golden()` and `gwzinbr()` accept a plain `data.frame` (not an `sf` object).
-Each row must correspond to one spatial unit (e.g., district, county, grid cell).
-The minimum required columns are:
+Tanto `Golden()` quanto `gwzinbr()` aceitam um `data.frame` simples (não um
+objeto `sf`). Cada linha deve corresponder a uma unidade espacial (p.ex.,
+distrito, município, célula de grade). As colunas mínimas necessárias são:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| Response | integer | Non-negative count |
-| Covariates | numeric | Predictor variables |
-| Latitude | numeric | Y-coordinate (see below) |
-| Longitude | numeric | X-coordinate (see below) |
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| Resposta | inteiro | Contagem não negativa |
+| Covariáveis | numérico | Variáveis preditoras |
+| Latitude | numérico | Coordenada Y (ver abaixo) |
+| Longitude | numérico | Coordenada X (ver abaixo) |
 
-Geometry is **not** passed to the model — it is only used for distance calculations.
-You can join model results back to an `sf` object for mapping (see @sec-visualizacao).
+A geometria **não** é passada ao modelo — ela é utilizada apenas para o cálculo
+das distâncias. Você pode juntar os resultados do modelo de volta a um objeto
+`sf` para mapeamento (ver @sec-visualizacao).
 
-## Coordinate reference systems {#sec-crs}
+## Sistemas de referência de coordenadas {#sec-crs}
 
-The `distancekm` argument controls how inter-point distances are computed:
+O argumento `distancekm` controla como as distâncias entre pontos são calculadas:
 
-- **`distancekm = FALSE`** (default): distances are computed in the native units
-  of your coordinate columns. Use this with **projected coordinates** (e.g., UTM
-  in metres), where Euclidean distances are meaningful.
-- **`distancekm = TRUE`**: multiplies the computed Euclidean distance by 111
-  (approximate km per degree). Use this with **geographic coordinates**
-  (decimal degrees, WGS84) only as an approximation — it ignores latitude-dependent
-  distortion.
+- **`distancekm = FALSE`** (padrão): distâncias calculadas nas unidades nativas
+  das colunas de coordenadas. Use com **coordenadas projetadas** (p.ex., UTM em
+  metros), onde distâncias euclidianas são significativas.
+- **`distancekm = TRUE`**: multiplica a distância euclidiana calculada por 111
+  (km aproximados por grau). Use com **coordenadas geográficas** (graus decimais,
+  WGS84) apenas como aproximação — ignora a distorção dependente da latitude.
 
 ::: {.callout-warning}
-## Coordinate system matters for the bandwidth
-The bandwidth `h` returned by `Golden()` is in the same units as your distance
-computation. If you use `distancekm = TRUE`, `h` will be in kilometres.
-If you use UTM coordinates with `distancekm = FALSE`, `h` will be in metres.
-Always document which CRS you used.
+## O sistema de coordenadas importa para a largura de banda
+A largura de banda `h` retornada por `Golden()` está nas mesmas unidades do
+cálculo de distância. Se você usar `distancekm = TRUE`, `h` estará em
+quilômetros. Se usar coordenadas UTM com `distancekm = FALSE`, `h` estará em
+metros. Sempre documente qual SRC foi utilizado.
 :::
 
-### Recommended practice
+### Prática recomendada
 
-For analyses over a single country or city, project to a local UTM zone and use
-`distancekm = FALSE`. This gives accurate Euclidean distances without approximation.
+Para análises sobre um único país ou cidade, projete para uma zona UTM local
+e use `distancekm = FALSE`. Isso fornece distâncias euclidianas precisas sem
+aproximação.
 
 ```r
 library(sf)
 
-# Convert sf object to projected UTM
-dados_sf <- st_transform(dados_sf, crs = 31983)  # SIRGAS 2000 UTM Zone 23S (Brazil)
+# Converter objeto sf para UTM projetado
+dados_sf <- st_transform(dados_sf, crs = 31983)  # SIRGAS 2000 UTM Zona 23S (Brasil)
 
-# Extract coordinates from the geometry centroid
+# Extrair coordenadas do centroide da geometria
 coords <- st_coordinates(st_centroid(dados_sf))
 
-# Add to data frame (drop geometry for modelling)
+# Adicionar ao data.frame (remover geometria para modelagem)
 dados_modelo <- st_drop_geometry(dados_sf)
 dados_modelo$long_utm <- coords[, 1]
 dados_modelo$lat_utm  <- coords[, 2]
 ```
 
-## Choosing spatial reference points {#sec-centroids}
+## Escolha dos pontos de referência espacial {#sec-centroids}
 
-GWR assigns weights based on distances between the **reference points** of each
-spatial unit. For polygon data (districts, counties), the default choice is the
-geometric centroid. However, the geometric centroid can fall in an uninhabited area
-(park, water body, industrial zone).
+A GWR atribui pesos com base nas distâncias entre os **pontos de referência**
+de cada unidade espacial. Para dados de polígonos (distritos, municípios), a
+escolha padrão é o centroide geométrico. No entanto, o centroide geométrico
+pode cair em uma área desabitada (parque, corpo d'água, zona industrial).
 
-When the analysis involves population-based counts, consider using
-**population-weighted centroids** or the location of **maximum population density**
-within each polygon. This ensures the distance metric reflects where people actually
-live.
+Quando a análise envolve contagens baseadas em população, considere usar
+**centroides ponderados pela população** ou a localização de **máxima densidade
+populacional** dentro de cada polígono. Isso garante que a métrica de distância
+reflita onde as pessoas realmente vivem.
 
-## The offset variable
+## A variável offset
 
-When the response is a count drawn from populations of different sizes, failing to
-account for exposure leads to confounded results — larger areas will mechanically
-show more cases. The offset corrects for this.
+Quando a resposta é uma contagem extraída de populações de tamanhos diferentes,
+ignorar a exposição leva a resultados confundidos — áreas maiores apresentarão
+mecanicamente mais casos. O offset corrige isso.
 
-In **gwzinbr**, the offset must be supplied as the **natural log** of the exposure:
+No **gwzinbr**, o offset deve ser fornecido como o **logaritmo natural** da
+exposição:
 
 ```r
 dados_modelo$log_pop <- log(dados_modelo$populacao_total)
 
-# In gwzinbr: offset = "log_pop"
+# Em gwzinbr: offset = "log_pop"
 ```
 
-Common offset choices:
+Escolhas comuns de offset:
 
-| Situation | Offset |
-|-----------|--------|
-| Rate relative to population | `log(population)` |
-| Indirect standardisation | `log(expected_cases)` |
-| Rate per area | `log(area_km2)` |
+| Situação | Offset |
+|----------|--------|
+| Taxa relativa à população | `log(populacao)` |
+| Padronização indireta | `log(casos_esperados)` |
+| Taxa por área | `log(area_km2)` |
 
-## Pre-modelling checklist
+## Escolhendo o modelo
 
-Before running `Golden()`, verify:
+Com os dados preparados, a escolha do argumento `model =` em `Golden()` e
+`gwzinbr()` deve considerar duas características da variável resposta:
 
-```{r}
-#| label: checklist-exemplo
-#| eval: false
+| Característica | Argumento |
+|---------------|-----------|
+| Superdispersão + excesso de zeros | `model = "zinb"` |
+| Superdispersão, sem excesso de zeros | `model = "negbin"` |
+| Equidisperso + excesso de zeros | `model = "zip"` |
+| Equidisperso, sem excesso de zeros | `model = "poisson"` |
 
+Quando `force = FALSE` (padrão), o pacote verifica internamente se a inflação
+de zeros é necessária e ajusta o modelo automaticamente se não for. Inicie com
+`model = "zinb"` e `force = FALSE` na dúvida — o pacote indicará se a reversão
+foi aplicada.
+
+```r
 library(gwzinbr)
-library(MASS)
-library(spdep)
-
 data(southkorea_covid19)
-d <- southkorea_covid19
 
-# 1. Check overdispersion
-mod_pois <- glm(n_covid1 ~ diff_sd, data = d, family = poisson(),
-                offset = ln_total)
-cat("Residual deviance / df:", deviance(mod_pois) / df.residual(mod_pois), "\n")
-# >> >> 1 suggests overdispersion
-
-# 2. Fit NB and check excess zeros
-mod_nb <- glm.nb(n_covid1 ~ diff_sd + offset(ln_total), data = d)
-mu_hat <- predict(mod_nb, type = "response")
-theta  <- mod_nb$theta
-zeros_esperados  <- sum((theta / (theta + mu_hat))^theta)
-zeros_observados <- sum(d$n_covid1 == 0)
-cat("Zeros observados:", zeros_observados,
-    "| Zeros esperados (NB):", round(zeros_esperados, 1), "\n")
-
-# 3. Fit global NB and check Moran I on residuals
-coords <- cbind(d$x, d$y)
-knn    <- spdep::knn2nb(spdep::knearneigh(coords, k = 4))
-lw     <- spdep::nb2listw(knn, style = "W")
-resid_nb <- residuals(mod_nb, type = "deviance")
-spdep::moran.mc(resid_nb, listw = lw, nsim = 999)
+# Exemplo: iniciar com zinb; o pacote reverte para negbin se não houver
+# excesso de zeros
+gss <- Golden(
+  data      = southkorea_covid19,
+  formula   = n_covid1 ~ diff_sd,
+  lat       = "y", long = "x",
+  offset    = "ln_total",
+  model     = "zinb",
+  method    = "adaptive_bsq",
+  bandwidth = "aic",
+  globalmin = TRUE,
+  force     = FALSE   # reversão automática ativada
+)
 ```

@@ -3,17 +3,21 @@ name: Render Quarto Book → GitHub Pages
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   render:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -25,61 +29,47 @@ jobs:
           r-version: "4.4"
           use-public-rspm: true
 
-      - name: System dependencies
+      - name: Install system libraries
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
             libcurl4-openssl-dev libssl-dev libxml2-dev \
             libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
-      - name: Cache R packages
-        uses: actions/cache@v4
+      - name: Install R packages (via pak)
+        uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          path: ${{ env.R_LIBS_USER }}
-          key: r-pkgs-${{ hashFiles('.github/workflows/render-quarto.yml') }}
-          restore-keys: r-pkgs-
+          packages: |
+            any::rmarkdown
+            any::knitr
+            any::kableExtra
+            any::broom
+            any::ggplot2
+            any::scales
+            any::patchwork
+            any::MASS
+            any::spdep
+            any::tidyverse
+            any::remotes
 
-      - name: Install R packages
-        env:
-          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install gwzinbr from GitHub
         run: |
-          Rscript -e '
-            pkgs <- c(
-              "tidyverse", "MASS", "spdep", "sp",
-              "knitr", "kableExtra", "broom", "dplyr",
-              "ggplot2", "scales", "patchwork", "remotes"
-            )
-            missing <- pkgs[!pkgs %in% installed.packages()[,"Package"]]
-            if (length(missing)) install.packages(missing, repos = "https://cloud.r-project.org")
-
-            if (!"gwzinbr" %in% installed.packages()[,"Package"]) {
-              remotes::install_github(
-                "julianamrosa/gwzinbr",
-                auth_token = Sys.getenv("GITHUB_PAT"),
-                quiet      = FALSE,
-                upgrade    = "never"
-              )
-            }
-          '
+          Rscript -e 'remotes::install_github("julianamrosa/gwzinbr", upgrade = "never", quiet = FALSE)'
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Cache Quarto computations
-        uses: actions/cache@v4
-        with:
-          path: _cache/
-          key: quarto-cache-${{ hashFiles('**/*.qmd') }}
-          restore-keys: quarto-cache-
-
       - name: Render Quarto Book
-        run: quarto render
+        run: quarto render docs/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_book
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
-          publish_branch: gh-pages
-          force_orphan: true
+        id: deployment
+        uses: actions/deploy-pages@v4

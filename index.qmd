@@ -1,39 +1,40 @@
-# Preface {.unnumbered}
+# Prefácio {.unnumbered}
 
-This book is the reference documentation for the **gwzinbr** R package, which fits
-Geographically Weighted Zero-Inflated Negative Binomial Regression (GWZINBR) models
-and related spatial count models.
+Este livro é a documentação de referência do pacote R **gwzinbr**, que ajusta
+modelos de Regressão Binomial Negativa Inflacionada de Zeros Geograficamente
+Ponderada (GWZINBR) e modelos espaciais de contagem relacionados.
 
-## What this book covers
+## O que este livro cobre
 
-The book is organized in four parts:
+O livro está organizado em quatro partes:
 
-- **Getting Started** — motivation, theoretical foundations, and data preparation
-- **Function Reference** — detailed documentation for `Golden()` and `gwzinbr()`,
-  including every parameter and every element of the output object
-- **Diagnostics & Visualization** — how to assess model fit and map local coefficients
-- **Case Study** — a full reproducible example using the built-in `southkorea_covid19`
-  dataset
+- **Primeiros Passos** — motivação, fundamentos teóricos e preparação dos dados
+- **Referência das Funções** — documentação detalhada de `Golden()` e `gwzinbr()`,
+  incluindo cada parâmetro e cada elemento do objeto de saída
+- **Diagnósticos e Visualização** — como avaliar o ajuste do modelo e mapear
+  coeficientes locais
+- **Estudo de Caso** — um exemplo completo e reprodutível usando o dataset
+  `southkorea_covid19` incluído no pacote
 
-## Installation
+## Instalação
 
 ```r
-# Install from GitHub
+# Instalar do GitHub
 remotes::install_github("julianamrosa/gwzinbr")
 ```
 
-The package depends on `sp` (for distance calculations). All other dependencies
-are base R.
+O pacote depende de `sp` (para cálculos de distância). As demais dependências
+são do R base.
 
-## Citing gwzinbr
+## Como citar o gwzinbr
 
-If you use **gwzinbr** in your research, please cite:
+Se você utilizar o **gwzinbr** em sua pesquisa, por favor cite:
 
 > Mesquita, D., Ferreira, P. H. C., & Demetrio, C. G. B. (2023).
 > *gwzinbr: Geographically Weighted Zero-Inflated Negative Binomial Regression*.
-> R package. <https://github.com/julianamrosa/gwzinbr>
+> Pacote R. <https://github.com/julianamrosa/gwzinbr>
 
-## How to contribute
+## Como contribuir
 
-Bug reports and feature requests can be filed at the
-[GitHub issue tracker](https://github.com/julianamrosa/gwzinbr/issues).
+Relatórios de bugs e solicitações de funcionalidades podem ser registrados no
+[rastreador de issues do GitHub](https://github.com/julianamrosa/gwzinbr/issues).

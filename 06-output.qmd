@@ -1,203 +1,226 @@
-# Interpreting the Output Object {#sec-output}
+# Interpretando o Objeto de Saída {#sec-output}
 
-The list returned by `gwzinbr()` contains 22 named elements. This chapter walks
-through each one with a practical description and usage examples.
+A lista retornada por `gwzinbr()` contém 22 elementos nomeados. Este capítulo
+percorre cada um com uma descrição prática e exemplos de uso.
 
-```{r}
-#| label: setup-output
-#| cache: false
-#| echo: false
-library(gwzinbr)
-```
-
-## Goodness-of-fit: `$measures` and `$bandwidth`
+## Qualidade do ajuste: `$measures` e `$bandwidth`
 
 ```r
-mod$bandwidth   # scalar — bandwidth h used
-mod$measures    # named numeric vector
+mod$bandwidth   # escalar — largura de banda h utilizada
+mod$measures    # vetor numérico nomeado
 ```
 
-`$measures` contains:
+`$measures` contém:
 
-| Name | Description |
-|------|-------------|
-| `deviance` | Residual deviance of the GWR model |
-| `AIC` | Akaike Information Criterion |
-| `AICc` | Corrected AIC (small-sample adjustment) |
+| Nome | Descrição |
+|------|-----------|
+| `deviance` | Desvio residual do modelo GWR |
+| `AIC` | Critério de Informação de Akaike |
+| `AICc` | AIC corrigido (ajuste para amostras pequenas) |
 | `pct_ll` | Pseudo-R² (McFadden): $1 - \hat{\ell}/\hat{\ell}_0$ |
-| `adj_pct_ll` | Adjusted pseudo-R² |
+| `adj_pct_ll` | Pseudo-R² ajustado |
 
 ```r
-# Example
+# Exemplo
 mod$measures["AICc"]
 mod$measures["pct_ll"]
 ```
 
-Compare AICc across candidate models (lower is better). Pseudo-R² above 0.2
-generally indicates reasonable fit for count models.
+Compare o AICc entre modelos candidatos (menor é melhor). Um pseudo-R² acima de
+0,2 geralmente indica ajuste razoável para modelos de contagem.
 
-## Local coefficient estimates: `$gwr_param_estimates`
+## Estimativas locais e significância: `$parameter_estimates`
 
 ```r
-mod$gwr_param_estimates   # matrix: N rows × (p + 1) columns
+mod$parameter_estimates   # matriz: N linhas × (2 + 4p + p) colunas
 ```
 
-Each row corresponds to one observation (spatial unit). Columns are the intercept
-followed by each predictor in the formula. These are the **local** estimates
-$\hat{\boldsymbol{\beta}}(\mathbf{u}_i)$.
+Este é o elemento central do objeto. Cada linha corresponde a uma observação.
+As colunas estão organizadas em grupos:
+
+| Prefixo | Conteúdo |
+|---------|----------|
+| `x`, `y` | Coordenadas da localização |
+| `Intercept`, `x1`, `x2`, … | Estimativas locais $\hat{\beta}(\mathbf{u}_i)$ |
+| `std_Intercept`, `std_x1`, … | Erros padrão locais |
+| `tstat_Intercept`, `tstat_x1`, … | Estatísticas $t$ locais |
+| `probt_Intercept`, `probt_x1`, … | $p$-valores bicaudais por observação |
+| `sig_Intercept`, `sig_x1`, … | Texto de significância (`"significant at 99%"`, `"significant at 95%"`, `"significant at 90%"`, `"not significant at 90%"`) |
+
+> **Atenção:** por conter colunas mistas (numéricas e de texto), ao converter
+> com `as.data.frame()` todas as colunas ficam do tipo `character`. Use
+> `as.numeric()` ao extrair coeficientes ou p-valores.
 
 ```r
-# Extract the local estimate for the first predictor
-beta_x1 <- mod$gwr_param_estimates[, "x1"]
+coefs <- as.data.frame(mod$parameter_estimates)
 
-# Add to the data frame for mapping
+# Coeficiente local para "x1"
+beta_x1 <- as.numeric(coefs[["x1"]])
+
+# p-valor local para "x1"
+pval_x1 <- as.numeric(coefs[["probt_x1"]])
+
+# Significância textual (usada para mascarar mapas)
+sig_x1 <- coefs[["sig_x1"]]
 dados_modelo$beta_x1 <- beta_x1
 ```
 
-## Local standard errors: `$qntls_gwr_se` and `$descript_stats_gwr_se`
+## Erros padrão locais: `$qntls_gwr_se` e `$descript_stats_gwr_se`
 
 ```r
-mod$qntls_gwr_se              # quantiles of SE per coefficient
-mod$descript_stats_gwr_se     # mean, SD, min, max of SE per coefficient
+mod$qntls_gwr_se              # quantis do EP por coeficiente
+mod$descript_stats_gwr_se     # média, DP, mín., máx. do EP por coeficiente
 ```
 
-Use these to assess the variability of local standard errors across the study area.
-High variability in SE may indicate sparse data in some regions.
+Use esses elementos para avaliar a variabilidade dos erros padrão locais na
+área de estudo. Alta variabilidade no EP pode indicar dados escassos em algumas
+regiões.
 
-## Local summary statistics: `$qntls_gwr_param_estimates` and `$descript_stats_gwr_param_estimates`
+## Estatísticas resumo locais: `$qntls_gwr_param_estimates` e `$descript_stats_gwr_param_estimates`
 
 ```r
-mod$qntls_gwr_param_estimates            # quantiles per coefficient
-mod$descript_stats_gwr_param_estimates   # mean, SD, min, max per coefficient
+mod$qntls_gwr_param_estimates            # quantis por coeficiente
+mod$descript_stats_gwr_param_estimates   # média, DP, mín., máx. por coeficiente
 ```
 
-Quick way to summarise the spatial distribution of each local coefficient:
+Forma rápida de resumir a distribuição espacial de cada coeficiente local:
 
 ```r
-# Print the full descriptive statistics table
+# Imprimir a tabela completa de estatísticas descritivas
 mod$descript_stats_gwr_param_estimates
 ```
 
-## Significance tests: `$t_test_gwr_param_estimates`
+## Parâmetros globais do teste t: `$t_test_gwr_param_estimates`
 
 ```r
-mod$t_test_gwr_param_estimates   # matrix: N rows × (2 × (p + 1)) columns
+mod$t_test_gwr_param_estimates   # vetor nomeado de 3 escalares
 ```
 
-For each observation and each coefficient, two values are stored:
-the $t$-statistic and the corresponding two-sided $p$-value.
+> **Atenção:** este elemento **não** contém p-valores por observação. Ele
+> armazena apenas os parâmetros globais do teste t aplicado às estimativas locais:
+
+| Nome | Conteúdo |
+|------|----------|
+| `p_value` | Nível de significância ajustado (correção de Bonferroni) |
+| `t_critical` | Valor crítico $t$ correspondente |
+| `df` | Graus de liberdade |
+
+Os **p-valores por observação** estão em `$parameter_estimates`, nas colunas
+`probt_<var>`. As etiquetas de significância prontas para uso estão nas colunas
+`sig_<var>` (ver seção anterior).
+
+## Parâmetro de superdispersão: `$alpha_estimates`
 
 ```r
-# Extract p-values for predictor "x1"
-pvals_x1 <- mod$t_test_gwr_param_estimates[, "x1_pvalue"]
-
-# Flag significant locations (α = 0.10)
-sig_x1 <- pvals_x1 < 0.10
-dados_modelo$sig_x1 <- sig_x1
+mod$alpha_estimates   # matriz: N × 6
 ```
 
-Use this to **mask non-significant estimates** in maps (see @sec-visualizacao).
+As colunas são: `id`, `alpha`, `std`, `tstat`, `probt`, `sig_alpha`.
 
-## Overdispersion parameter: `$alpha_estimates`
+> **Atenção:** a coluna 1 é o índice `id`, **não** o valor de alpha.
+> Use o nome da coluna para extrair corretamente.
 
-```r
-mod$alpha_estimates   # matrix: N × 2
-                      # column 1: local alpha; column 2: location index
-```
-
-The local overdispersion parameter $\alpha_i$ quantifies how much the variance
-exceeds the mean at each location. Regions with high $\alpha$ have more
-unexplained variability.
+O parâmetro local de superdispersão $\alpha_i$ quantifica o quanto a variância
+excede a média em cada localização. Regiões com $\alpha$ alto apresentam mais
+variabilidade não explicada.
 
 ```r
-alpha_local <- mod$alpha_estimates[, 1]
+alpha_df    <- as.data.frame(mod$alpha_estimates)
+alpha_local <- as.numeric(alpha_df[, "alpha"])
 dados_modelo$alpha <- alpha_local
 ```
 
-This element is `NULL` for Poisson and ZIP models (no overdispersion parameter).
+Este elemento é `NULL` para modelos Poisson e ZIP (sem parâmetro de
+superdispersão).
 
-## Residuals: `$residuals`
+## Resíduos: `$residuals`
 
 ```r
-mod$residuals   # matrix: N × 5
+mod$residuals   # matriz: N × 5
 ```
 
-The five columns are:
+As cinco colunas são:
 
-| Column | Residual type |
-|--------|--------------|
-| 1 | Raw residuals ($y_i - \hat{y}_i$) |
-| 2 | Pearson residuals |
-| 3 | Deviance residuals |
-| 4 | Standardised deviance residuals |
-| 5 | Working residuals (from IRLS) |
+| Coluna | Tipo de resíduo |
+|--------|----------------|
+| 1 | Resíduos brutos ($y_i - \hat{y}_i$) |
+| 2 | Resíduos de Pearson |
+| 3 | Resíduos deviance |
+| 4 | Resíduos deviance padronizados |
+| 5 | Resíduos de trabalho (do IRLS) |
 
-Deviance residuals (column 3 or 4) are most useful for spatial diagnostics:
+Os resíduos deviance (coluna 3 ou 4) são mais úteis para diagnósticos espaciais:
 
 ```r
 resid_deviance <- mod$residuals[, 3]
 dados_modelo$residuos <- resid_deviance
 ```
 
-## Non-stationarity test: `$non_stationary_test`
+## Teste de não-estacionariedade: `$non_stationarity_test`
 
 ```r
-mod$non_stationary_test   # data frame: one row per coefficient
+mod$non_stationarity_test   # data frame: uma linha por coeficiente
 ```
 
-This test assesses whether the spatial variation in each local coefficient is
-statistically significant — i.e., whether a globally constant coefficient would
-be sufficient. A significant result (small $p$-value) supports retaining the GWR
-over a global model for that covariate.
+> **Atenção:** este elemento é calculado **apenas** quando `method != "adaptive_bsq"`.
+> Com `method = "adaptive_bsq"` (padrão recomendado), `$non_stationarity_test`
+> retorna `NULL`. Nesse caso, a evidência de não-estacionariedade deve ser
+> avaliada pela variabilidade espacial dos coeficientes locais nos mapas.
+
+Este teste avalia se a variação espacial de cada coeficiente local é
+estatisticamente significativa — ou seja, se um coeficiente globalmente
+constante seria suficiente. Um resultado significativo (p-valor pequeno)
+apoia a retenção da GWR em relação a um modelo global para aquela covariável.
 
 ```r
-mod$non_stationary_test
-#         variable      F_stat   df1   df2   p_value
+mod$non_stationarity_test
+#         variavel      F_stat   gl1   gl2   p_valor
 # (Intercept)          2.341    4.2  91.8     0.032
 # x1                   3.112    4.2  91.8     0.004
 # x2                   1.067    4.2  91.8     0.390
 ```
 
-## Global model reference: `$global_param_estimates`
+## Referência do modelo global: `$global_param_estimates`
 
 ```r
-mod$global_param_estimates   # matrix: coefficients and SE of global NB
+mod$global_param_estimates   # matriz: coeficientes e EP do NB global
 ```
 
-This is the global Negative Binomial fit used as the starting point for the
-IRLS algorithm. It serves as a reference for comparing against the GWR local
-estimates.
+Este é o ajuste global da Binomial Negativa usado como ponto de partida para
+o algoritmo IRLS. Serve como referência para comparação com as estimativas
+locais da GWR.
 
-## Zero-inflation elements
+## Elementos de inflação de zeros
 
-The following elements are non-`NULL` only when `model %in% c("zinb", "zip")`:
+Os seguintes elementos são não-`NULL` apenas quando `model %in% c("zinb", "zip")`:
 
-| Element | Description |
-|---------|-------------|
-| `$qntls_gwr_zero_infl_param_estimates` | Quantiles of $\hat{\lambda}(\mathbf{u}_i)$ |
-| `$descript_stats_gwr_zero_infl_param_estimates` | Descriptive stats of ZI local estimates |
-| `$t_test_gwr_zero_infl_param_estimates` | $t$-tests for zero-inflation coefficients |
-| `$qntls_gwr_zero_infl_se` | Quantiles of ZI standard errors |
-| `$descript_stats_gwr_zero_infl_se` | Descriptive stats of ZI SE |
-| `$non_stationary_test_zero_infl` | Non-stationarity test for ZI component |
-| `$analysis_max_like_zero_infl_param_estimated` | MLE ZI parameter estimates |
-| `$analysis_max_like_gof_measures` | GoF for global ZI model |
+| Elemento | Descrição |
+|----------|-----------|
+| `$qntls_gwr_zero_infl_param_estimates` | Quantis de $\hat{\lambda}(\mathbf{u}_i)$ |
+| `$descript_stats_gwr_zero_infl_param_estimates` | Estatísticas descritivas das estimativas locais ZI |
+| `$t_test_gwr_zero_infl_param_estimates` | Testes $t$ para coeficientes de inflação de zeros |
+| `$qntls_gwr_zero_infl_se` | Quantis dos EP de inflação de zeros |
+| `$descript_stats_gwr_zero_infl_se` | Estatísticas descritivas do EP ZI |
+| `$non_stationarity_test_zero_infl` | Teste de não-estacionariedade para o componente ZI (apenas `method != "adaptive_bsq"`) |
+| `$analysis_max_like_zero_infl_param_estimated` | Estimativas dos parâmetros ZI por EMV |
+| `$analysis_max_like_gof_measures` | Qualidade do ajuste para o modelo ZI global |
 
-## Prediction grid: `$param_estimates_grid`
+## Grade de predição: `$param_estimates_grid`
 
 ```r
-mod$param_estimates_grid   # matrix or NULL
+mod$param_estimates_grid   # matriz ou NULL
 ```
 
-When a `grid` data frame is passed to `gwzinbr()`, this element contains the
-local coefficients predicted at each grid location. Useful for producing smooth
-raster maps of spatial variation in coefficients.
+Quando um data.frame `grid` é passado para `gwzinbr()`, este elemento contém
+os coeficientes locais preditos em cada localização da grade. Útil para produzir
+mapas raster suaves da variação espacial dos coeficientes.
 
-## Variance-covariance matrix: `$variance_covariance_matrix`
+## Matriz de variância-covariância: `$variance_covariance_matrix`
 
 ```r
-mod$variance_covariance_matrix   # square matrix: p+1 × p+1
+mod$variance_covariance_matrix   # matriz quadrada: (p+1) × (p+1)
 ```
 
-The variance-covariance matrix of the global parameter estimates. Can be used to
-compute confidence intervals for the global model reference coefficients.
+A matriz de variância-covariância das estimativas globais dos parâmetros. Pode
+ser usada para calcular intervalos de confiança para os coeficientes do modelo
+global de referência.

@@ -1,34 +1,34 @@
-# Theoretical Background
+# Fundamentos Teóricos
 
-## Count data models
+## Modelos para dados de contagem
 
-### Poisson regression
+### Regressão de Poisson
 
-The Poisson distribution assigns probability
+A distribuição de Poisson atribui probabilidade
 
 $$
 P(Y = y \mid \mu) = \frac{e^{-\mu} \mu^y}{y!}, \quad y = 0, 1, 2, \ldots
 $$
 
-where $\mu > 0$ is both the mean and the variance. In Poisson regression, a
-log-linear model links covariates to the mean:
+onde $\mu > 0$ é tanto a média quanto a variância. Na regressão de Poisson,
+um modelo log-linear relaciona as covariáveis à média:
 
 $$
 \log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
 $$
 
-The **offset** absorbs known exposure differences between units (e.g., population
-size, observation time). When counts are modelled as rates, the offset is typically
-$\log(\text{population}_i)$ or, in the indirect standardisation approach, the log
-of the expected number of cases $\log(E_i)$.
+O **offset** absorve diferenças de exposição conhecidas entre unidades (p.ex.,
+tamanho da população, tempo de observação). Quando as contagens são modeladas
+como taxas, o offset é tipicamente $\log(\text{população}_i)$ ou, na abordagem
+de padronização indireta, o log do número esperado de casos $\log(E_i)$.
 
-**Limitation:** Poisson requires $\text{Var}(Y) = E(Y)$. When this fails
-(overdispersion), standard errors are underestimated and inference is invalid.
+**Limitação:** Poisson exige $\text{Var}(Y) = E(Y)$. Quando isso não ocorre
+(superdispersão), os erros padrão são subestimados e a inferência é inválida.
 
-### Negative Binomial regression
+### Regressão Binomial Negativa
 
-The Negative Binomial (NB) distribution introduces an overdispersion parameter
-$\alpha > 0$ (or equivalently $\theta = 1/\alpha$):
+A distribuição Binomial Negativa (BN) introduz um parâmetro de superdispersão
+$\alpha > 0$ (ou equivalentemente $\theta = 1/\alpha$):
 
 $$
 P(Y = y \mid \mu, \alpha) = \binom{y + \theta - 1}{y}
@@ -36,26 +36,29 @@ P(Y = y \mid \mu, \alpha) = \binom{y + \theta - 1}{y}
 \left(\frac{\theta}{\mu + \theta}\right)^\theta
 $$
 
-with $\text{Var}(Y) = \mu + \alpha \mu^2 > \mu$. As $\alpha \to 0$ (equivalently
-$\theta \to \infty$), the NB converges to the Poisson.
+com $\text{Var}(Y) = \mu + \alpha \mu^2 > \mu$. Quando $\alpha \to 0$
+(equivalentemente $\theta \to \infty$), a BN converge para Poisson.
 
-The NB regression model uses the same log link:
+O modelo de regressão BN usa o mesmo link logarítmico:
 
 $$
 \log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
 $$
 
-with $\alpha$ estimated jointly from the data.
+com $\alpha$ estimado conjuntamente a partir dos dados.
 
-### Zero-Inflated models
+### Modelos Inflacionados de Zeros
 
-Zero-inflated models posit that zeros arise from **two separate processes**:
+Os modelos inflacionados de zeros postulam que os zeros surgem de **dois
+processos separados**:
 
-1. A **structural-zero process** (e.g., a district that never generates cases
-   regardless of risk factors), governed by a Bernoulli with probability $\pi_i$.
-2. A **count process** (Poisson or NB), which can also produce zeros by chance.
+1. Um **processo de zeros estruturais** (p.ex., um distrito que nunca gera
+   casos independentemente dos fatores de risco), governado por uma Bernoulli
+   com probabilidade $\pi_i$.
+2. Um **processo de contagem** (Poisson ou BN), que também pode produzir zeros
+   por acaso.
 
-The **ZIP** probability mass function is:
+A função de massa de probabilidade do **ZIP** é:
 
 $$
 P(Y = y) = \begin{cases}
@@ -64,7 +67,7 @@ P(Y = y) = \begin{cases}
 \end{cases}
 $$
 
-The **ZINB** replaces the Poisson component with a Negative Binomial:
+O **ZINB** substitui o componente Poisson por uma Binomial Negativa:
 
 $$
 P(Y = y) = \begin{cases}
@@ -75,94 +78,100 @@ P(Y = y) = \begin{cases}
 \end{cases}
 $$
 
-The zero-inflation probability $\pi_i$ is modelled via a logistic link:
+A probabilidade de inflação de zeros $\pi_i$ é modelada via link logístico:
 
 $$
 \text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}
 $$
 
-where $\mathbf{g}_i$ can be a subset of or a different set of covariates from $\mathbf{x}_i$.
+onde $\mathbf{g}_i$ pode ser um subconjunto ou um conjunto diferente de
+covariáveis de $\mathbf{x}_i$.
 
-**Checking for excess zeros:** Compare observed zeros to the number expected
-under a fitted NB model. If $\sum_i \hat{P}(Y_i = 0 \mid \hat{\mu}_i, \hat{\alpha}) \ll$
-number of observed zeros, a zero-inflated model is warranted.
+**Verificando o excesso de zeros:** Compare os zeros observados com o número
+esperado sob um modelo BN ajustado. Se $\sum_i \hat{P}(Y_i = 0 \mid \hat{\mu}_i,
+\hat{\alpha}) \ll$ número de zeros observados, um modelo inflacionado de zeros
+é necessário.
 
-## Geographically Weighted Regression (GWR)
+## Regressão Geograficamente Ponderada (GWR)
 
-### Core idea
+### Ideia central
 
-Standard regression estimates a single coefficient vector $\boldsymbol{\beta}$
-assumed constant across all observations. GWR relaxes this by estimating a
-**local coefficient vector** $\boldsymbol{\beta}(\mathbf{u}_i)$ for each
-location $\mathbf{u}_i = (\text{long}_i, \text{lat}_i)$:
+A regressão padrão estima um único vetor de coeficientes $\boldsymbol{\beta}$,
+assumido constante em todas as observações. A GWR relaxa isso, estimando um
+**vetor de coeficientes local** $\boldsymbol{\beta}(\mathbf{u}_i)$ para cada
+localização $\mathbf{u}_i = (\text{long}_i, \text{lat}_i)$:
 
 $$
 \log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i) + \text{offset}_i
 $$
 
-The local estimates are obtained by re-weighting the likelihood with a spatial
-kernel that down-weights distant observations.
+As estimativas locais são obtidas reponderando a verossimilhança com um kernel
+espacial que reduz o peso das observações distantes.
 
-### Kernel functions
+### Funções kernel
 
-**gwzinbr** implements two kernel types, selected via the `method` argument:
+O **gwzinbr** implementa dois tipos de kernel, selecionados pelo argumento
+`method`:
 
-| `method` | Kernel | Formula |
+| `method` | Kernel | Fórmula |
 |----------|--------|---------|
-| `"fixed_g"` | Gaussian (fixed bandwidth) | $w_{ij} = \exp\!\left(-\tfrac{1}{2}(d_{ij}/h)^2\right)$ |
-| `"adaptive_bsq"` | Bi-square (adaptive bandwidth) | $w_{ij} = \left(1 - (d_{ij}/h_i)^2\right)^2 \cdot \mathbf{1}[d_{ij} \leq h_i]$ |
+| `"fixed_g"` | Gaussiano (largura de banda fixa) | $w_{ij} = \exp\!\left(-\tfrac{1}{2}(d_{ij}/h)^2\right)$ |
+| `"adaptive_bsq"` | Bi-quadrado (largura de banda adaptativa) | $w_{ij} = \left(1 - (d_{ij}/h_i)^2\right)^2 \cdot \mathbf{1}[d_{ij} \leq h_i]$ |
 
-where $d_{ij}$ is the Euclidean distance between locations $i$ and $j$, and $h$
-(or $h_i$ in the adaptive case) is the **bandwidth**.
+onde $d_{ij}$ é a distância euclidiana entre as localizações $i$ e $j$, e $h$
+(ou $h_i$ no caso adaptativo) é a **largura de banda**.
 
-- **Fixed bandwidth** (`fixed_g`): $h$ is a distance value (same units as
-  coordinates). Every location uses the same radius.
-- **Adaptive bandwidth** (`adaptive_bsq`): $h$ is an integer — the number of
-  nearest neighbours included. Sparse regions get a larger physical radius.
+- **Largura de banda fixa** (`fixed_g`): $h$ é um valor de distância (mesmas
+  unidades das coordenadas). Toda localização usa o mesmo raio.
+- **Largura de banda adaptativa** (`adaptive_bsq`): $h$ é um inteiro — o número
+  de vizinhos mais próximos incluídos. Regiões esparsas recebem um raio físico
+  maior.
 
 ::: {.callout-tip}
-## Which kernel to choose?
-Use **adaptive** (`adaptive_bsq`) when the spatial distribution of observations
-is irregular (e.g., administrative units that vary greatly in size). Use
-**fixed** (`fixed_g`) when observations are regularly distributed or when you
-have a strong a priori reason for a fixed radius.
+## Qual kernel escolher?
+Use **adaptativo** (`adaptive_bsq`) quando a distribuição espacial das
+observações é irregular (p.ex., unidades administrativas com tamanhos muito
+diferentes). Use **fixo** (`fixed_g`) quando as observações são regularmente
+distribuídas ou quando há uma razão a priori forte para um raio fixo.
 :::
 
-### Bandwidth selection
+### Seleção da largura de banda
 
-The bandwidth $h$ controls the bias–variance trade-off:
+A largura de banda $h$ controla o trade-off viés–variância:
 
-- **Small $h$**: highly local estimates, low bias, high variance.
-- **Large $h$**: smoother estimates, high bias, low variance. As $h \to \infty$,
-  the GWR collapses to the global model.
+- **$h$ pequeno**: estimativas altamente locais, baixo viés, alta variância.
+- **$h$ grande**: estimativas mais suavizadas, alto viés, baixa variância.
+  Quando $h \to \infty$, a GWR colapsa para o modelo global.
 
-The optimal $h$ is found by minimising either:
+O $h$ ótimo é encontrado minimizando:
 
-- **Cross-validation (CV):** leave-one-out prediction error
+- **Validação cruzada (CV):** erro de predição leave-one-out
   $\text{CV}(h) = \sum_i (y_i - \hat{y}_{-i}(h))^2$
-- **AICc:** corrected Akaike Information Criterion, which penalises model
-  complexity via the effective number of parameters $\text{tr}(\mathbf{S})$.
+- **AICc:** Critério de Informação de Akaike corrigido, que penaliza a
+  complexidade do modelo pelo número efetivo de parâmetros $\text{tr}(\mathbf{S})$.
 
-The `Golden()` function implements a **Golden Section Search** to find this optimum
-efficiently (see @sec-golden).
+A função `Golden()` implementa uma **Busca em Seção Áurea** para encontrar esse
+ótimo de forma eficiente (ver @sec-golden).
 
-## GWZINBR: combining GWR with ZINB
+## GWZINBR: combinando GWR com ZINB
 
-The full GWZINBR model estimates, at each location $\mathbf{u}_i$:
+O modelo GWZINBR completo estima, em cada localização $\mathbf{u}_i$:
 
-1. A local NB mean: $\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i)$
-2. A local zero-inflation probability:
+1. Uma média BN local: $\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i)$
+2. Uma probabilidade local de inflação de zeros:
    $\text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}(\mathbf{u}_i)$
-3. A local overdispersion parameter: $\alpha_i$
+3. Um parâmetro local de superdispersão: $\alpha_i$
 
-All three sets of parameters are estimated jointly via a geographically weighted
-Iteratively Reweighted Least Squares (IRLS) algorithm, using the spatial kernel
-to assign observation-specific weights.
+Os três conjuntos de parâmetros são estimados conjuntamente por meio de um
+algoritmo de Mínimos Quadrados Iterativamente Reponderados (IRLS) geograficamente
+ponderado, utilizando o kernel espacial para atribuir pesos específicos por
+observação.
 
-### Non-stationarity test
+### Teste de não-estacionariedade
 
-After fitting the model, a formal test checks whether the local variation in each
-coefficient $\beta_k(\mathbf{u}_i)$ is statistically significant — i.e., whether
-the GWR version truly improves over a global $\beta_k$. This test is reported in
-`$non_stationary_test` (and `$non_stationary_test_zero_infl` for the zero-inflation
-component).
+Após o ajuste do modelo, um teste formal verifica se a variação local de cada
+coeficiente $\beta_k(\mathbf{u}_i)$ é estatisticamente significativa — ou seja,
+se a versão GWR realmente melhora em relação a um $\beta_k$ global. Este teste
+é reportado em `$non_stationarity_test` (e `$non_stationarity_test_zero_infl` para
+o componente de inflação de zeros). Atenção: esses elementos são `NULL` quando
+`method = "adaptive_bsq"`.
