@@ -1,0 +1,40 @@
+# Prefácio {.unnumbered}
+
+Este livro é a documentação de referência do pacote R **gwzinbr**, que ajusta
+modelos de Regressão Binomial Negativa Inflacionada de Zeros Geograficamente
+Ponderada (GWZINBR) e modelos espaciais de contagem relacionados.
+
+## O que este livro cobre
+
+O livro está organizado em quatro partes:
+
+- **Primeiros Passos** — motivação, fundamentos teóricos e preparação dos dados
+- **Referência das Funções** — documentação detalhada de `Golden()` e `gwzinbr()`,
+  incluindo cada parâmetro e cada elemento do objeto de saída
+- **Diagnósticos e Visualização** — como avaliar o ajuste do modelo e mapear
+  coeficientes locais
+- **Estudo de Caso** — um exemplo completo e reprodutível usando o dataset
+  `southkorea_covid19` incluído no pacote
+
+## Instalação
+
+```r
+# Instalar do GitHub
+remotes::install_github("julianamrosa/gwzinbr")
+```
+
+O pacote depende de `sp` (para cálculos de distância). As demais dependências
+são do R base.
+
+## Como citar o gwzinbr
+
+Se você utilizar o **gwzinbr** em sua pesquisa, por favor cite:
+
+> Mesquita, D., Ferreira, P. H. C., & Demetrio, C. G. B. (2023).
+> *gwzinbr: Geographically Weighted Zero-Inflated Negative Binomial Regression*.
+> Pacote R. <https://github.com/julianamrosa/gwzinbr>
+
+## Como contribuir
+
+Relatórios de bugs e solicitações de funcionalidades podem ser registrados no
+[rastreador de issues do GitHub](https://github.com/julianamrosa/gwzinbr/issues).

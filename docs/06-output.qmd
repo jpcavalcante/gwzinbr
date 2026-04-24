@@ -1,0 +1,200 @@
+# Interpretando o Objeto de Saída {#sec-output}
+
+A lista retornada por `gwzinbr()` contém 22 elementos nomeados. Este capítulo
+percorre cada um com uma descrição prática e exemplos de uso.
+
+## Qualidade do ajuste: `$measures` e `$bandwidth`
+
+```r
+mod$bandwidth   # escalar — largura de banda h utilizada
+mod$measures    # vetor numérico nomeado
+```
+
+`$measures` contém:
+
+| Nome | Descrição |
+|------|-----------|
+| `deviance` | Desvio residual do modelo GWR |
+| `AIC` | Critério de Informação de Akaike |
+| `AICc` | AIC corrigido (ajuste para amostras pequenas) |
+| `pct_ll` | Pseudo-R² (McFadden): $1 - \hat{\ell}/\hat{\ell}_0$ |
+| `adj_pct_ll` | Pseudo-R² ajustado |
+
+```r
+# Exemplo
+mod$measures["AICc"]
+mod$measures["pct_ll"]
+```
+
+Compare o AICc entre modelos candidatos (menor é melhor). Um pseudo-R² acima de
+0,2 geralmente indica ajuste razoável para modelos de contagem.
+
+## Estimativas locais dos coeficientes: `$gwr_param_estimates`
+
+```r
+mod$gwr_param_estimates   # matriz: N linhas × (p + 1) colunas
+```
+
+Cada linha corresponde a uma observação (unidade espacial). As colunas são o
+intercepto seguido de cada preditor na fórmula. Essas são as estimativas
+**locais** $\hat{\boldsymbol{\beta}}(\mathbf{u}_i)$.
+
+```r
+# Extrair a estimativa local para o primeiro preditor
+beta_x1 <- mod$gwr_param_estimates[, "x1"]
+
+# Adicionar ao data.frame para mapeamento
+dados_modelo$beta_x1 <- beta_x1
+```
+
+## Erros padrão locais: `$qntls_gwr_se` e `$descript_stats_gwr_se`
+
+```r
+mod$qntls_gwr_se              # quantis do EP por coeficiente
+mod$descript_stats_gwr_se     # média, DP, mín., máx. do EP por coeficiente
+```
+
+Use esses elementos para avaliar a variabilidade dos erros padrão locais na
+área de estudo. Alta variabilidade no EP pode indicar dados escassos em algumas
+regiões.
+
+## Estatísticas resumo locais: `$qntls_gwr_param_estimates` e `$descript_stats_gwr_param_estimates`
+
+```r
+mod$qntls_gwr_param_estimates            # quantis por coeficiente
+mod$descript_stats_gwr_param_estimates   # média, DP, mín., máx. por coeficiente
+```
+
+Forma rápida de resumir a distribuição espacial de cada coeficiente local:
+
+```r
+# Imprimir a tabela completa de estatísticas descritivas
+mod$descript_stats_gwr_param_estimates
+```
+
+## Testes de significância: `$t_test_gwr_param_estimates`
+
+```r
+mod$t_test_gwr_param_estimates   # matriz: N linhas × (2 × (p + 1)) colunas
+```
+
+Para cada observação e cada coeficiente, dois valores são armazenados:
+a estatística $t$ e o $p$-valor bicaudal correspondente.
+
+```r
+# Extrair p-valores para o preditor "x1"
+pvals_x1 <- mod$t_test_gwr_param_estimates[, "x1_pvalue"]
+
+# Identificar localizações significativas (α = 0,10)
+sig_x1 <- pvals_x1 < 0.10
+dados_modelo$sig_x1 <- sig_x1
+```
+
+Use isso para **mascarar estimativas não significativas** nos mapas
+(ver @sec-visualizacao).
+
+## Parâmetro de superdispersão: `$alpha_estimates`
+
+```r
+mod$alpha_estimates   # matriz: N × 2
+                      # coluna 1: alpha local; coluna 2: índice da localização
+```
+
+O parâmetro local de superdispersão $\alpha_i$ quantifica o quanto a variância
+excede a média em cada localização. Regiões com $\alpha$ alto apresentam mais
+variabilidade não explicada.
+
+```r
+alpha_local <- mod$alpha_estimates[, 1]
+dados_modelo$alpha <- alpha_local
+```
+
+Este elemento é `NULL` para modelos Poisson e ZIP (sem parâmetro de
+superdispersão).
+
+## Resíduos: `$residuals`
+
+```r
+mod$residuals   # matriz: N × 5
+```
+
+As cinco colunas são:
+
+| Coluna | Tipo de resíduo |
+|--------|----------------|
+| 1 | Resíduos brutos ($y_i - \hat{y}_i$) |
+| 2 | Resíduos de Pearson |
+| 3 | Resíduos deviance |
+| 4 | Resíduos deviance padronizados |
+| 5 | Resíduos de trabalho (do IRLS) |
+
+Os resíduos deviance (coluna 3 ou 4) são mais úteis para diagnósticos espaciais:
+
+```r
+resid_deviance <- mod$residuals[, 3]
+dados_modelo$residuos <- resid_deviance
+```
+
+## Teste de não-estacionariedade: `$non_stationary_test`
+
+```r
+mod$non_stationary_test   # data frame: uma linha por coeficiente
+```
+
+Este teste avalia se a variação espacial de cada coeficiente local é
+estatisticamente significativa — ou seja, se um coeficiente globalmente
+constante seria suficiente. Um resultado significativo (p-valor pequeno)
+apoia a retenção da GWR em relação a um modelo global para aquela covariável.
+
+```r
+mod$non_stationary_test
+#         variavel      F_stat   gl1   gl2   p_valor
+# (Intercept)          2.341    4.2  91.8     0.032
+# x1                   3.112    4.2  91.8     0.004
+# x2                   1.067    4.2  91.8     0.390
+```
+
+## Referência do modelo global: `$global_param_estimates`
+
+```r
+mod$global_param_estimates   # matriz: coeficientes e EP do NB global
+```
+
+Este é o ajuste global da Binomial Negativa usado como ponto de partida para
+o algoritmo IRLS. Serve como referência para comparação com as estimativas
+locais da GWR.
+
+## Elementos de inflação de zeros
+
+Os seguintes elementos são não-`NULL` apenas quando `model %in% c("zinb", "zip")`:
+
+| Elemento | Descrição |
+|----------|-----------|
+| `$qntls_gwr_zero_infl_param_estimates` | Quantis de $\hat{\lambda}(\mathbf{u}_i)$ |
+| `$descript_stats_gwr_zero_infl_param_estimates` | Estatísticas descritivas das estimativas locais ZI |
+| `$t_test_gwr_zero_infl_param_estimates` | Testes $t$ para coeficientes de inflação de zeros |
+| `$qntls_gwr_zero_infl_se` | Quantis dos EP de inflação de zeros |
+| `$descript_stats_gwr_zero_infl_se` | Estatísticas descritivas do EP ZI |
+| `$non_stationary_test_zero_infl` | Teste de não-estacionariedade para o componente ZI |
+| `$analysis_max_like_zero_infl_param_estimated` | Estimativas dos parâmetros ZI por EMV |
+| `$analysis_max_like_gof_measures` | Qualidade do ajuste para o modelo ZI global |
+
+## Grade de predição: `$param_estimates_grid`
+
+```r
+mod$param_estimates_grid   # matriz ou NULL
+```
+
+Quando um data.frame `grid` é passado para `gwzinbr()`, este elemento contém
+os coeficientes locais preditos em cada localização da grade. Útil para produzir
+mapas raster suaves da variação espacial dos coeficientes.
+
+## Matriz de variância-covariância: `$variance_covariance_matrix`
+
+```r
+mod$variance_covariance_matrix   # matriz quadrada: (p+1) × (p+1)
+```
+
+A matriz de variância-covariância das estimativas globais dos parâmetros. Pode
+ser usada para calcular intervalos de confiança para os coeficientes do modelo
+global de referência.

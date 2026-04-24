@@ -1,0 +1,128 @@
+# Preparação dos Dados
+
+## Estrutura de dados necessária
+
+Tanto `Golden()` quanto `gwzinbr()` aceitam um `data.frame` simples (não um
+objeto `sf`). Cada linha deve corresponder a uma unidade espacial (p.ex.,
+distrito, município, célula de grade). As colunas mínimas necessárias são:
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| Resposta | inteiro | Contagem não negativa |
+| Covariáveis | numérico | Variáveis preditoras |
+| Latitude | numérico | Coordenada Y (ver abaixo) |
+| Longitude | numérico | Coordenada X (ver abaixo) |
+
+A geometria **não** é passada ao modelo — ela é utilizada apenas para o cálculo
+das distâncias. Você pode juntar os resultados do modelo de volta a um objeto
+`sf` para mapeamento (ver @sec-visualizacao).
+
+## Sistemas de referência de coordenadas {#sec-crs}
+
+O argumento `distancekm` controla como as distâncias entre pontos são calculadas:
+
+- **`distancekm = FALSE`** (padrão): distâncias calculadas nas unidades nativas
+  das colunas de coordenadas. Use com **coordenadas projetadas** (p.ex., UTM em
+  metros), onde distâncias euclidianas são significativas.
+- **`distancekm = TRUE`**: multiplica a distância euclidiana calculada por 111
+  (km aproximados por grau). Use com **coordenadas geográficas** (graus decimais,
+  WGS84) apenas como aproximação — ignora a distorção dependente da latitude.
+
+::: {.callout-warning}
+## O sistema de coordenadas importa para a largura de banda
+A largura de banda `h` retornada por `Golden()` está nas mesmas unidades do
+cálculo de distância. Se você usar `distancekm = TRUE`, `h` estará em
+quilômetros. Se usar coordenadas UTM com `distancekm = FALSE`, `h` estará em
+metros. Sempre documente qual SRC foi utilizado.
+:::
+
+### Prática recomendada
+
+Para análises sobre um único país ou cidade, projete para uma zona UTM local
+e use `distancekm = FALSE`. Isso fornece distâncias euclidianas precisas sem
+aproximação.
+
+```r
+library(sf)
+
+# Converter objeto sf para UTM projetado
+dados_sf <- st_transform(dados_sf, crs = 31983)  # SIRGAS 2000 UTM Zona 23S (Brasil)
+
+# Extrair coordenadas do centroide da geometria
+coords <- st_coordinates(st_centroid(dados_sf))
+
+# Adicionar ao data.frame (remover geometria para modelagem)
+dados_modelo <- st_drop_geometry(dados_sf)
+dados_modelo$long_utm <- coords[, 1]
+dados_modelo$lat_utm  <- coords[, 2]
+```
+
+## Escolha dos pontos de referência espacial {#sec-centroids}
+
+A GWR atribui pesos com base nas distâncias entre os **pontos de referência**
+de cada unidade espacial. Para dados de polígonos (distritos, municípios), a
+escolha padrão é o centroide geométrico. No entanto, o centroide geométrico
+pode cair em uma área desabitada (parque, corpo d'água, zona industrial).
+
+Quando a análise envolve contagens baseadas em população, considere usar
+**centroides ponderados pela população** ou a localização de **máxima densidade
+populacional** dentro de cada polígono. Isso garante que a métrica de distância
+reflita onde as pessoas realmente vivem.
+
+## A variável offset
+
+Quando a resposta é uma contagem extraída de populações de tamanhos diferentes,
+ignorar a exposição leva a resultados confundidos — áreas maiores apresentarão
+mecanicamente mais casos. O offset corrige isso.
+
+No **gwzinbr**, o offset deve ser fornecido como o **logaritmo natural** da
+exposição:
+
+```r
+dados_modelo$log_pop <- log(dados_modelo$populacao_total)
+
+# Em gwzinbr: offset = "log_pop"
+```
+
+Escolhas comuns de offset:
+
+| Situação | Offset |
+|----------|--------|
+| Taxa relativa à população | `log(populacao)` |
+| Padronização indireta | `log(casos_esperados)` |
+| Taxa por área | `log(area_km2)` |
+
+## Lista de verificação pré-modelagem
+
+Antes de executar `Golden()`, verifique:
+
+```r
+library(gwzinbr)
+library(MASS)
+library(spdep)
+
+data(southkorea_covid19)
+d <- southkorea_covid19
+
+# 1. Verificar superdispersão
+mod_pois <- glm(n_covid1 ~ diff_sd, data = d, family = poisson(),
+                offset = ln_total)
+cat("Desvio residual / gl:", deviance(mod_pois) / df.residual(mod_pois), "\n")
+# >> >> 1 sugere superdispersão
+
+# 2. Ajustar BN e verificar excesso de zeros
+mod_nb <- glm.nb(n_covid1 ~ diff_sd + offset(ln_total), data = d)
+mu_hat <- predict(mod_nb, type = "response")
+theta  <- mod_nb$theta
+zeros_esperados  <- sum((theta / (theta + mu_hat))^theta)
+zeros_observados <- sum(d$n_covid1 == 0)
+cat("Zeros observados:", zeros_observados,
+    "| Zeros esperados (BN):", round(zeros_esperados, 1), "\n")
+
+# 3. Ajustar BN global e verificar I de Moran nos resíduos
+coords <- cbind(d$x, d$y)
+knn    <- spdep::knn2nb(spdep::knearneigh(coords, k = 4))
+lw     <- spdep::nb2listw(knn, style = "W")
+resid_nb <- residuals(mod_nb, type = "deviance")
+spdep::moran.mc(resid_nb, listw = lw, nsim = 999)
+```

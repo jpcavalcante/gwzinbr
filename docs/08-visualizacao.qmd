@@ -1,0 +1,172 @@
+# Visualização {#sec-visualizacao}
+
+`gwzinbr()` retorna as estimativas como matrizes simples. Para produzir mapas,
+é necessário juntá-las de volta a um objeto espacial (`sf`) que armazena a
+geometria de cada unidade. Este capítulo mostra o fluxo completo.
+
+```r
+library(gwzinbr)
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+## Juntando os resultados a um objeto sf
+
+```r
+# Assumindo: dados_sf    = objeto sf (uma linha por distrito, mesma ordem do modelo)
+#            mod         = objeto gwzinbr ajustado
+#            dados_modelo = data.frame simples usado para o ajuste
+
+# 1. Extrair coeficientes locais
+coefs <- as.data.frame(mod$gwr_param_estimates)
+
+# 2. Extrair p-valores do teste t
+pvals <- as.data.frame(mod$t_test_gwr_param_estimates)
+
+# 3. Extrair resíduos (deviance)
+coefs$residuos <- mod$residuals[, 3]
+
+# 4. Extrair alpha (superdispersão)
+coefs$alpha <- mod$alpha_estimates[, 1]
+
+# 5. Juntar ao sf
+dados_sf <- bind_cols(dados_sf, coefs, pvals)
+```
+
+## Mapeando coeficientes locais (mascarando não significativos)
+
+O mapa GWR mais informativo exibe **apenas as estimativas locais estatisticamente
+significativas**, mascarando os distritos não significativos em cinza.
+
+```r
+# Auxiliar: mascarar estimativas não significativas
+mascarar_insig <- function(estimativa, pvalor, alpha = 0.10) {
+  ifelse(pvalor < alpha, estimativa, NA_real_)
+}
+
+dados_sf <- dados_sf %>%
+  mutate(
+    beta_x1_sig = mascarar_insig(x1, x1_pvalue, alpha = 0.10),
+    beta_x2_sig = mascarar_insig(x2, x2_pvalue, alpha = 0.10)
+  )
+
+# Mapa para o preditor x1
+ggplot(dados_sf) +
+  geom_sf(aes(fill = beta_x1_sig), color = "grey70", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low      = "#2166ac",
+    mid      = "white",
+    high     = "#b2182b",
+    midpoint = 0,
+    na.value = "grey85",
+    name     = expression(hat(beta)[x1])
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text  = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_line(color = "grey90")
+  ) +
+  labs(title = "Coeficiente local — x1",
+       subtitle = "Cinza = não significativo a 10%")
+```
+
+## Mapeando resíduos
+
+```r
+ggplot(dados_sf) +
+  geom_sf(aes(fill = residuos), color = "grey70", linewidth = 0.2) +
+  scale_fill_gradient2(
+    low      = "#2166ac",
+    mid      = "white",
+    high     = "#b2182b",
+    midpoint = 0,
+    name     = "Resíduo\ndeviance"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Distribuição espacial dos resíduos deviance — GWR-NB")
+```
+
+Os resíduos devem aparecer espacialmente aleatórios após um modelo GWR bem
+ajustado. Agrupamentos de resíduos positivos ou negativos grandes sugerem
+covariáveis ausentes ou largura de banda inadequada.
+
+## Mapeando o parâmetro de superdispersão (alpha)
+
+```r
+ggplot(dados_sf) +
+  geom_sf(aes(fill = alpha), color = "grey70", linewidth = 0.2) +
+  scale_fill_viridis_c(name = expression(hat(alpha)), option = "plasma") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Parâmetro local de superdispersão (α)",
+       subtitle = "α maior = mais variabilidade não explicada")
+```
+
+Regiões com $\hat{\alpha}$ alto são onde o modelo se ajusta mal — a variância
+das contagens é muito maior do que o previsto. Essas regiões podem justificar
+investigação de confundidores espaciais ausentes.
+
+## Mapa multi-painel de coeficientes
+
+```r
+library(patchwork)
+
+mapa_coef <- function(df, col, pval_col, titulo, alpha = 0.10) {
+  df <- df %>%
+    mutate(coef_sig = mascarar_insig(.data[[col]], .data[[pval_col]], alpha))
+
+  ggplot(df) +
+    geom_sf(aes(fill = coef_sig), color = "grey70", linewidth = 0.15) +
+    scale_fill_gradient2(
+      low = "#2166ac", mid = "white", high = "#b2182b",
+      midpoint = 0, na.value = "grey85", name = NULL
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+    labs(title = titulo)
+}
+
+p1 <- mapa_coef(dados_sf, "x1", "x1_pvalue", "x1")
+p2 <- mapa_coef(dados_sf, "x2", "x2_pvalue", "x2")
+p3 <- mapa_coef(dados_sf, "x3", "x3_pvalue", "x3")
+p4 <- mapa_coef(dados_sf, "x4", "x4_pvalue", "x4")
+
+(p1 | p2) / (p3 | p4)
+```
+
+## Resumo descritivo das estimativas locais
+
+```r
+# Tabela de resumo rápido (sem necessidade de mapeamento)
+mod$descript_stats_gwr_param_estimates
+#              Média      DP     Mín    Q25   Mediana   Q75    Máx
+# (Intercept)  ...
+# x1           ...
+# x2           ...
+```
+
+Esta tabela é útil em publicações quando o espaço é limitado e você quer
+comunicar a amplitude da variação local para cada preditor.
+
+## Gráfico de convergência para seleção da largura de banda
+
+Após executar `Golden()`, visualize o critério em função da largura de banda:
+
+```r
+# Assumindo que gss é a saída de Golden()
+iter <- gss$iterations
+
+ggplot(iter, aes(x = h1, y = aic1)) +
+  geom_point(color = "#2171b5", size = 2) +
+  geom_point(aes(x = h2, y = aic2), color = "#b2182b", size = 2) +
+  geom_vline(xintercept = gss$min_bandwidth, linetype = "dashed") +
+  scale_x_continuous(name = "Largura de banda (h)") +
+  scale_y_continuous(name = "AICc") +
+  theme_minimal() +
+  labs(title = "Convergência da Busca em Seção Áurea",
+       subtitle = paste("h ótimo =", gss$min_bandwidth))
+```

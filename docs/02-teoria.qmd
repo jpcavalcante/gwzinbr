@@ -1,0 +1,176 @@
+# Fundamentos Teóricos
+
+## Modelos para dados de contagem
+
+### Regressão de Poisson
+
+A distribuição de Poisson atribui probabilidade
+
+$$
+P(Y = y \mid \mu) = \frac{e^{-\mu} \mu^y}{y!}, \quad y = 0, 1, 2, \ldots
+$$
+
+onde $\mu > 0$ é tanto a média quanto a variância. Na regressão de Poisson,
+um modelo log-linear relaciona as covariáveis à média:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
+$$
+
+O **offset** absorve diferenças de exposição conhecidas entre unidades (p.ex.,
+tamanho da população, tempo de observação). Quando as contagens são modeladas
+como taxas, o offset é tipicamente $\log(\text{população}_i)$ ou, na abordagem
+de padronização indireta, o log do número esperado de casos $\log(E_i)$.
+
+**Limitação:** Poisson exige $\text{Var}(Y) = E(Y)$. Quando isso não ocorre
+(superdispersão), os erros padrão são subestimados e a inferência é inválida.
+
+### Regressão Binomial Negativa
+
+A distribuição Binomial Negativa (BN) introduz um parâmetro de superdispersão
+$\alpha > 0$ (ou equivalentemente $\theta = 1/\alpha$):
+
+$$
+P(Y = y \mid \mu, \alpha) = \binom{y + \theta - 1}{y}
+\left(\frac{\mu}{\mu + \theta}\right)^y
+\left(\frac{\theta}{\mu + \theta}\right)^\theta
+$$
+
+com $\text{Var}(Y) = \mu + \alpha \mu^2 > \mu$. Quando $\alpha \to 0$
+(equivalentemente $\theta \to \infty$), a BN converge para Poisson.
+
+O modelo de regressão BN usa o mesmo link logarítmico:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta} + \text{offset}_i
+$$
+
+com $\alpha$ estimado conjuntamente a partir dos dados.
+
+### Modelos Inflacionados de Zeros
+
+Os modelos inflacionados de zeros postulam que os zeros surgem de **dois
+processos separados**:
+
+1. Um **processo de zeros estruturais** (p.ex., um distrito que nunca gera
+   casos independentemente dos fatores de risco), governado por uma Bernoulli
+   com probabilidade $\pi_i$.
+2. Um **processo de contagem** (Poisson ou BN), que também pode produzir zeros
+   por acaso.
+
+A função de massa de probabilidade do **ZIP** é:
+
+$$
+P(Y = y) = \begin{cases}
+\pi_i + (1 - \pi_i) e^{-\mu_i} & y = 0 \\
+(1 - \pi_i) \frac{e^{-\mu_i} \mu_i^y}{y!} & y > 0
+\end{cases}
+$$
+
+O **ZINB** substitui o componente Poisson por uma Binomial Negativa:
+
+$$
+P(Y = y) = \begin{cases}
+\pi_i + (1 - \pi_i) \left(\frac{\theta}{\mu_i + \theta}\right)^\theta & y = 0 \\
+(1 - \pi_i) \binom{y + \theta - 1}{y}
+\left(\frac{\mu_i}{\mu_i + \theta}\right)^y
+\left(\frac{\theta}{\mu_i + \theta}\right)^\theta & y > 0
+\end{cases}
+$$
+
+A probabilidade de inflação de zeros $\pi_i$ é modelada via link logístico:
+
+$$
+\text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}
+$$
+
+onde $\mathbf{g}_i$ pode ser um subconjunto ou um conjunto diferente de
+covariáveis de $\mathbf{x}_i$.
+
+**Verificando o excesso de zeros:** Compare os zeros observados com o número
+esperado sob um modelo BN ajustado. Se $\sum_i \hat{P}(Y_i = 0 \mid \hat{\mu}_i,
+\hat{\alpha}) \ll$ número de zeros observados, um modelo inflacionado de zeros
+é necessário.
+
+## Regressão Geograficamente Ponderada (GWR)
+
+### Ideia central
+
+A regressão padrão estima um único vetor de coeficientes $\boldsymbol{\beta}$,
+assumido constante em todas as observações. A GWR relaxa isso, estimando um
+**vetor de coeficientes local** $\boldsymbol{\beta}(\mathbf{u}_i)$ para cada
+localização $\mathbf{u}_i = (\text{long}_i, \text{lat}_i)$:
+
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i) + \text{offset}_i
+$$
+
+As estimativas locais são obtidas reponderando a verossimilhança com um kernel
+espacial que reduz o peso das observações distantes.
+
+### Funções kernel
+
+O **gwzinbr** implementa dois tipos de kernel, selecionados pelo argumento
+`method`:
+
+| `method` | Kernel | Fórmula |
+|----------|--------|---------|
+| `"fixed_g"` | Gaussiano (largura de banda fixa) | $w_{ij} = \exp\!\left(-\tfrac{1}{2}(d_{ij}/h)^2\right)$ |
+| `"adaptive_bsq"` | Bi-quadrado (largura de banda adaptativa) | $w_{ij} = \left(1 - (d_{ij}/h_i)^2\right)^2 \cdot \mathbf{1}[d_{ij} \leq h_i]$ |
+
+onde $d_{ij}$ é a distância euclidiana entre as localizações $i$ e $j$, e $h$
+(ou $h_i$ no caso adaptativo) é a **largura de banda**.
+
+- **Largura de banda fixa** (`fixed_g`): $h$ é um valor de distância (mesmas
+  unidades das coordenadas). Toda localização usa o mesmo raio.
+- **Largura de banda adaptativa** (`adaptive_bsq`): $h$ é um inteiro — o número
+  de vizinhos mais próximos incluídos. Regiões esparsas recebem um raio físico
+  maior.
+
+::: {.callout-tip}
+## Qual kernel escolher?
+Use **adaptativo** (`adaptive_bsq`) quando a distribuição espacial das
+observações é irregular (p.ex., unidades administrativas com tamanhos muito
+diferentes). Use **fixo** (`fixed_g`) quando as observações são regularmente
+distribuídas ou quando há uma razão a priori forte para um raio fixo.
+:::
+
+### Seleção da largura de banda
+
+A largura de banda $h$ controla o trade-off viés–variância:
+
+- **$h$ pequeno**: estimativas altamente locais, baixo viés, alta variância.
+- **$h$ grande**: estimativas mais suavizadas, alto viés, baixa variância.
+  Quando $h \to \infty$, a GWR colapsa para o modelo global.
+
+O $h$ ótimo é encontrado minimizando:
+
+- **Validação cruzada (CV):** erro de predição leave-one-out
+  $\text{CV}(h) = \sum_i (y_i - \hat{y}_{-i}(h))^2$
+- **AICc:** Critério de Informação de Akaike corrigido, que penaliza a
+  complexidade do modelo pelo número efetivo de parâmetros $\text{tr}(\mathbf{S})$.
+
+A função `Golden()` implementa uma **Busca em Seção Áurea** para encontrar esse
+ótimo de forma eficiente (ver @sec-golden).
+
+## GWZINBR: combinando GWR com ZINB
+
+O modelo GWZINBR completo estima, em cada localização $\mathbf{u}_i$:
+
+1. Uma média BN local: $\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i)$
+2. Uma probabilidade local de inflação de zeros:
+   $\text{logit}(\pi_i) = \mathbf{g}_i^\top \boldsymbol{\lambda}(\mathbf{u}_i)$
+3. Um parâmetro local de superdispersão: $\alpha_i$
+
+Os três conjuntos de parâmetros são estimados conjuntamente por meio de um
+algoritmo de Mínimos Quadrados Iterativamente Reponderados (IRLS) geograficamente
+ponderado, utilizando o kernel espacial para atribuir pesos específicos por
+observação.
+
+### Teste de não-estacionariedade
+
+Após o ajuste do modelo, um teste formal verifica se a variação local de cada
+coeficiente $\beta_k(\mathbf{u}_i)$ é estatisticamente significativa — ou seja,
+se a versão GWR realmente melhora em relação a um $\beta_k$ global. Este teste
+é reportado em `$non_stationary_test` (e `$non_stationary_test_zero_infl` para
+o componente de inflação de zeros).

@@ -1,0 +1,58 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "gwzinbr"
+  subtitle: "Geographically Weighted Zero-Inflated Negative Binomial Regression"
+  author: "Juliana M. Rosa & Douglas Mesquita"
+  date: today
+  repo-url: https://github.com/julianamrosa/gwzinbr
+  repo-actions: [issue]
+  search: true
+  sidebar:
+    style: docked
+    background: light
+  chapters:
+    - index.qmd
+    - part: "Getting Started"
+      chapters:
+        - 01-intro.qmd
+        - 02-teoria.qmd
+        - 03-dados.qmd
+    - part: "Function Reference"
+      chapters:
+        - 04-golden.qmd
+        - 05-gwzinbr.qmd
+        - 06-output.qmd
+    - part: "Diagnostics & Visualization"
+      chapters:
+        - 07-diagnosticos.qmd
+        - 08-visualizacao.qmd
+    - part: "Case Study"
+      chapters:
+        - 09-estudo-caso.qmd
+    - referencias.qmd
+
+bibliography: references.bib
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    code-fold: show
+    code-tools: true
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    fig-width: 8
+    fig-height: 5
+    smooth-scroll: true
+    highlight-style: github
+
+execute:
+  warning: false
+  message: false
+  cache: true
+  cache-path: _cache/

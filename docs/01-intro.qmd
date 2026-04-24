@@ -1,0 +1,86 @@
+# Introdução
+
+## Motivação
+
+Dados de contagem — valores inteiros que representam o número de vezes que um
+evento ocorre em uma região ou período fixo — aparecem frequentemente em saúde
+pública, criminologia, ecologia e estudos urbanos. A regressão linear padrão
+é inadequada para contagens, pois pode produzir previsões negativas e pressupõe
+erros com distribuição normal. O ponto de partida natural é a regressão de
+**Poisson**, mas ela impõe uma suposição restritiva: a média é igual à variância
+(equidispersão).
+
+Dados de contagem do mundo real violam essa suposição de duas formas:
+
+1. **Superdispersão**: a variância supera a média, frequentemente devido a
+   heterogeneidade não observada que amplifica a variabilidade entre unidades.
+2. **Excesso de zeros**: a proporção de contagens zero é maior do que qualquer
+   distribuição Poisson ou Binomial Negativa simples pode explicar — geralmente
+   porque dois processos distintos geram os dados (um processo de zeros
+   estruturais e um processo de contagem).
+
+Além da questão distribucional, dados espaciais enfrentam um terceiro desafio:
+a **não-estacionariedade espacial** das relações. Uma covariável que prediz
+fortemente as contagens em uma região pode ser irrelevante em outra. Um único
+coeficiente global de regressão não consegue capturar essa heterogeneidade.
+
+O **gwzinbr** aborda os três desafios simultaneamente, ajustando versões
+**Geograficamente Ponderadas** dos modelos de regressão Poisson, Binomial
+Negativa, ZIP e ZINB.
+
+## Quando usar o gwzinbr
+
+Use as funções deste pacote quando:
+
+- Sua variável resposta é uma **contagem inteira não negativa**.
+- Suas observações são **georreferenciadas** (cada linha possui latitude/longitude
+  ou coordenadas espaciais equivalentes).
+- Você suspeita que a relação entre os preditores e a resposta **varia no espaço**
+  (não-estacionariedade espacial).
+
+Use a variante **ZINB** (`model = "zinb"`) adicionalmente quando:
+
+- A distribuição de contagens apresenta **superdispersão** (variância > média).
+- Os dados contêm **mais zeros** do que a distribuição Binomial Negativa prediz.
+
+## Fluxo de trabalho recomendado {#sec-workflow}
+
+O diagrama abaixo resume o caminho de decisão desde os dados brutos até um
+modelo GWZINBR ajustado.
+
+```
+Dados de contagem brutos
+         │
+         ▼
+Verificar superdispersão ──── equidisperso? ──► GWR-Poisson
+         │ superdisperso
+         ▼
+Verificar excesso de zeros ──── sem excesso? ──► GWNBR (model = "negbin")
+         │ com excesso de zeros
+         ▼
+Verificar autocorrelação espacial nos resíduos do NB global
+         │ I de Moran significativo
+         ▼
+Selecionar largura de banda  ◄── Golden()
+         │
+         ▼
+Ajustar modelo ◄── gwzinbr(model = "zinb")
+         │
+         ▼
+Diagnósticos + visualização
+```
+
+## Visão geral do pacote
+
+O pacote exporta duas funções principais:
+
+| Função | Finalidade |
+|--------|-----------|
+| `Golden()` | Busca em Seção Áurea para a largura de banda ótima $h$ |
+| `gwzinbr()` | Ajusta um modelo de contagem geograficamente ponderado |
+
+Um dataset embutido também é fornecido:
+
+| Dataset | Descrição |
+|---------|-----------|
+| `southkorea_covid19` | Contagens de casos de COVID-19 em 229 distritos da Coreia do Sul |
