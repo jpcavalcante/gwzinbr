@@ -1,14 +1,9 @@
-# `gwzinbr()`: Ajuste do Modelo {#sec-gwzinbr}
+# `gwzinbr()` {#sec-gwzinbr}
 
-## Visão geral
+Ajusta um modelo de regressão geograficamente ponderado para dados de contagem.
+Aceita as distribuições ZINB, ZIP, Binomial Negativa e Poisson.
 
-`gwzinbr()` é a função principal de modelagem. Dado um dataset com coordenadas
-espaciais e uma largura de banda $h$ (de `Golden()`), ela ajusta um modelo de
-regressão geograficamente ponderado para dados de contagem e retorna uma lista
-rica com estimativas locais, erros padrão, testes de significância e medidas de
-qualidade do ajuste.
-
-## Assinatura da função
+## Assinatura
 
 ```r
 gwzinbr(
@@ -30,86 +25,136 @@ gwzinbr(
 )
 ```
 
-## Referência dos parâmetros
+## Argumentos
 
-### Dados e especificação do modelo
+### Dados e modelo
 
-| Parâmetro | Tipo | Padrão | Descrição |
+| Argumento | Tipo | Padrão | Descrição |
 |-----------|------|--------|-----------|
-| `data` | `data.frame` | — | Dataset (data.frame simples, não `sf`). |
-| `formula` | `formula` | — | Fórmula para o componente de contagem. Exemplo: `casos ~ x1 + x2`. |
-| `xvarinf` | `character` | `NULL` | Nome(s) da(s) coluna(s) para covariáveis de inflação de zeros. `NULL` = sem componente de inflação de zeros. |
-| `weight` | `character` | `NULL` | Coluna de pesos amostrais. `NULL` = pesos iguais. |
-| `offset` | `character` | `NULL` | Coluna de offset na escala logarítmica. `NULL` = offset zero. |
-| `model` | `character` | `"zinb"` | `"zinb"`, `"zip"`, `"negbin"` ou `"poisson"`. |
-| `force` | `logical` | `FALSE` | Força o modelo escolhido mesmo quando a inflação de zeros não é necessária. |
-| `int_inf` | `logical` | `TRUE` | Inclui intercepto no componente de inflação de zeros. |
-| `maxg` | `integer` | `100` | Máximo de iterações para o subproblema IRLS de inflação de zeros. |
+| `data` | `data.frame` | — | Dataset. Deve ser um `data.frame` simples, não um objeto `sf`. |
+| `formula` | `formula` | — | Fórmula do componente de contagem, como em `lm()`. Exemplo: `casos ~ x1 + x2`. |
+| `xvarinf` | `character` | `NULL` | Nome(s) da(s) coluna(s) com covariáveis do componente de inflação de zeros. `NULL` indica modelo sem inflação de zeros. |
+| `weight` | `character` | `NULL` | Nome da coluna com pesos amostrais. `NULL` atribui peso igual a todas as observações. |
+| `offset` | `character` | `NULL` | Nome da coluna de offset na **escala logarítmica**. `NULL` define offset zero. |
+| `model` | `character` | `"zinb"` | Família do modelo: `"zinb"`, `"zip"`, `"negbin"` ou `"poisson"`. |
+| `force` | `logical` | `FALSE` | Se `FALSE`, reverte automaticamente para o modelo sem inflação de zeros quando não há excesso de zeros. Use `TRUE` para fixar o modelo especificado. |
+| `int_inf` | `logical` | `TRUE` | Se `TRUE`, inclui intercepto no componente de inflação de zeros. |
+| `maxg` | `integer` | `100` | Número máximo de iterações para o subproblema IRLS do componente de inflação de zeros. |
 
-### Especificação espacial
+### Coordenadas espaciais
 
-| Parâmetro | Tipo | Padrão | Descrição |
+| Argumento | Tipo | Padrão | Descrição |
 |-----------|------|--------|-----------|
-| `lat` | `character` | — | Nome da coluna de latitude / coordenada Y. |
-| `long` | `character` | — | Nome da coluna de longitude / coordenada X. |
-| `distancekm` | `logical` | `FALSE` | Converte distâncias para km (multiplica por 111). Use apenas com graus decimais. |
+| `lat` | `character` | — | Nome da coluna com a coordenada Y (latitude ou northing). |
+| `long` | `character` | — | Nome da coluna com a coordenada X (longitude ou easting). |
+| `distancekm` | `logical` | `FALSE` | Se `TRUE`, multiplica as distâncias euclidianas por 111 para aproximar quilômetros. Use apenas com coordenadas em graus decimais (WGS84). |
 
 ### Largura de banda e grade de predição
 
-| Parâmetro | Tipo | Padrão | Descrição |
+| Argumento | Tipo | Padrão | Descrição |
 |-----------|------|--------|-----------|
-| `h` | `numeric` | `NULL` | Valor da largura de banda. Use a saída de `Golden()$min_bandwidth`. Se `NULL`, o ajuste prossegue com todas as observações igualmente ponderadas (modelo global). |
-| `grid` | `data.frame` | `NULL` | Localizações adicionais para predição. Deve conter as mesmas colunas `lat`/`long` de `data`. As predições são armazenadas em `$param_estimates_grid`. |
+| `h` | `numeric` | `NULL` | Largura de banda. Use o valor retornado por `Golden()$min_bandwidth`. Se `NULL`, todas as observações recebem peso igual (equivale ao modelo global). |
+| `grid` | `data.frame` | `NULL` | Localizações adicionais para predição. Deve conter as mesmas colunas `lat`/`long` de `data`. Os resultados são armazenados em `$param_estimates_grid`. |
 
-## Combinações de modelos suportadas
+## Valor de retorno
 
-| `model` | `xvarinf` | `force` | Resultado |
-|---------|-----------|---------|-----------|
-| `"zinb"` | `NULL` | `FALSE` | GWNBR (reverte automaticamente se não houver excesso de zeros) |
-| `"zinb"` | `"var"` | `TRUE` | GWZINBR — BN inflacionada de zeros completa |
-| `"negbin"` | qualquer | — | GWNBR (inflação de zeros ignorada) |
-| `"zip"` | `NULL` | `FALSE` | GWZIP (reverte para GWPoisson se não houver excesso de zeros) |
-| `"poisson"` | qualquer | — | GWR-Poisson |
+`gwzinbr()` retorna uma lista nomeada com 22 elementos.
 
-::: {.callout-note}
-## Reversão automática do modelo
-Quando `force = FALSE` e o número esperado de zeros sob a distribuição BN
-ajustada iguala ou supera os zeros observados, o pacote exibe uma mensagem
-e silenciosamente descarta o componente de inflação de zeros. Use `force = TRUE`
-para substituir esse comportamento.
-:::
-
-## Valor de retorno {#sec-output-overview}
-
-`gwzinbr()` retorna uma lista nomeada com **22 elementos**. Eles são detalhados
-completamente em @sec-output. Aqui está uma tabela de referência rápida:
+### Largura de banda e qualidade do ajuste
 
 | Elemento | Tipo | Descrição |
 |----------|------|-----------|
-| `$bandwidth` | escalar | Valor da largura de banda utilizado |
-| `$measures` | vetor nomeado | AIC, AICc, desvio, pseudo-R², pseudo-R² ajustado |
-| `$gwr_param_estimates` | matriz $N \times (p+1)$ | Estimativas locais dos coeficientes |
-| `$alpha_estimates` | matriz $N \times 2$ | Estimativas locais de $\alpha$ (superdispersão) |
-| `$residuals` | matriz $N \times 5$ | Resíduos (múltiplos tipos) |
-| `$t_test_gwr_param_estimates` | matriz | Estatísticas $t$ e $p$-valores por localização |
-| `$non_stationary_test` | data frame | Teste de não-estacionariedade por covariável |
-| `$global_param_estimates` | matriz | Coeficientes do modelo global (referência) |
-| `$qntls_gwr_param_estimates` | matriz | Quantis das estimativas locais |
-| `$descript_stats_gwr_param_estimates` | matriz | Média, DP, mín., máx. das estimativas locais |
-| `$qntls_gwr_se` | matriz | Quantis dos erros padrão locais |
-| `$descript_stats_gwr_se` | matriz | Estatísticas descritivas do EP local |
-| `$variance_covariance_matrix` | matriz | Variância-covariância das estimativas globais |
-| `$qntls_gwr_zero_infl_param_estimates` | matriz | Quantis das estimativas de inflação de zeros |
-| `$descript_stats_gwr_zero_infl_param_estimates` | matriz | Estatísticas descritivas das estimativas ZI |
-| `$t_test_gwr_zero_infl_param_estimates` | matriz | Testes $t$ para o componente ZI |
-| `$qntls_gwr_zero_infl_se` | matriz | Quantis dos EP de inflação de zeros |
-| `$descript_stats_gwr_zero_infl_se` | matriz | Estatísticas descritivas do EP ZI |
-| `$non_stationary_test_zero_infl` | data frame | Teste de não-estacionariedade para o componente ZI |
-| `$analysis_max_like_zero_infl_param_estimated` | matriz | EMV dos parâmetros ZI |
-| `$analysis_max_like_gof_measures` | matriz | Qualidade do ajuste para o modelo ZI global |
-| `$param_estimates_grid` | matriz | Predições nas localizações de `grid` |
+| `$bandwidth` | escalar | Valor da largura de banda utilizado. |
+| `$measures` | vetor nomeado | Métricas de qualidade do ajuste: `deviance`, `AIC`, `AICc`, `pct_ll` (pseudo-R² de McFadden) e `adj_pct_ll` (pseudo-R² ajustado). |
 
-## Exemplo mínimo
+### Estimativas locais do componente de contagem
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$parameter_estimates` | matriz $N \times (2 + 5p)$ | Estimativas locais por observação. Colunas: `x`, `y` (coordenadas); `Intercept`, `x1`, … (coeficientes $\hat{\beta}$); `std_Intercept`, `std_x1`, … (erros padrão); `tstat_Intercept`, `tstat_x1`, … (estatísticas $t$); `probt_Intercept`, `probt_x1`, … ($p$-valores bicaudais); `sig_Intercept`, `sig_x1`, … (significância textual). |
+| `$qntls_gwr_param_estimates` | matriz | Quantis (mín., Q1, mediana, Q3, máx.) das estimativas locais, por coeficiente. |
+| `$descript_stats_gwr_param_estimates` | matriz | Média, desvio padrão, mínimo e máximo das estimativas locais, por coeficiente. |
+| `$t_test_gwr_param_estimates` | vetor (3 escalares) | Parâmetros do teste $t$ global aplicado às estimativas locais: `p_value`, `t_critical`, `df`. Não contém $p$-valores por observação (estes estão nas colunas `probt_*` de `$parameter_estimates`). |
+| `$qntls_gwr_se` | matriz | Quantis dos erros padrão locais, por coeficiente. |
+| `$descript_stats_gwr_se` | matriz | Média, desvio padrão, mínimo e máximo dos erros padrão locais, por coeficiente. |
+
+### Parâmetro de superdispersão
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$alpha_estimates` | matriz $N \times 6$ | Estimativas locais de $\alpha$ (superdispersão). Colunas: `id`, `alpha`, `std`, `tstat`, `probt`, `sig_alpha`. Disponível apenas para `model = "zinb"` e `model = "negbin"`. A coluna 1 é o índice `id` — extraia pelo nome (`alpha_df[, "alpha"]`). |
+
+### Resíduos
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$residuals` | matriz $N \times 5$ | Cinco tipos de resíduos por observação: (1) brutos $y_i - \hat{y}_i$; (2) Pearson; (3) deviance; (4) deviance padronizados; (5) de trabalho (IRLS). |
+
+### Teste de não-estacionariedade
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$non_stationarity_test` | `data.frame` ou `NULL` | Teste $F$ de não-estacionariedade para cada coeficiente do componente de contagem. Retorna `NULL` quando `method = "adaptive_bsq"`. |
+| `$non_stationarity_test_zero_infl` | `data.frame` ou `NULL` | Idem para o componente de inflação de zeros. Retorna `NULL` quando `method = "adaptive_bsq"`. |
+
+### Referência global e variância-covariância
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$global_param_estimates` | matriz | Coeficientes e erros padrão do modelo global ajustado internamente como ponto de partida do algoritmo. |
+| `$variance_covariance_matrix` | matriz quadrada $(p+1) \times (p+1)$ | Matriz de variância-covariância das estimativas globais. |
+
+### Componente de inflação de zeros
+
+Os elementos abaixo são não-`NULL` apenas quando `model %in% c("zinb", "zip")`:
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$qntls_gwr_zero_infl_param_estimates` | matriz | Quantis das estimativas locais $\hat{\lambda}(\mathbf{u}_i)$ do componente de inflação de zeros. |
+| `$descript_stats_gwr_zero_infl_param_estimates` | matriz | Média, DP, mín. e máx. das estimativas locais ZI. |
+| `$t_test_gwr_zero_infl_param_estimates` | vetor (3 escalares) | Parâmetros do teste $t$ global para as estimativas ZI: `p_value`, `t_critical`, `df`. |
+| `$qntls_gwr_zero_infl_se` | matriz | Quantis dos erros padrão locais ZI. |
+| `$descript_stats_gwr_zero_infl_se` | matriz | Média, DP, mín. e máx. dos erros padrão locais ZI. |
+| `$analysis_max_like_zero_infl_param_estimated` | matriz | Estimativas dos parâmetros ZI por máxima verossimilhança. |
+| `$analysis_max_like_gof_measures` | matriz | Métricas de qualidade do ajuste para o modelo ZI global. |
+
+### Grade de predição
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| `$param_estimates_grid` | matriz ou `NULL` | Coeficientes locais preditos nas localizações de `grid`. Não-`NULL` apenas quando `grid` é fornecido. |
+
+## Colunas de significância (`sig_*`)
+
+As colunas `sig_<var>` em `$parameter_estimates` contêm rótulos textuais de
+significância para cada observação:
+
+| Valor | Interpretação |
+|-------|--------------|
+| `"significant at 99%"` | $p < 0{,}01$ |
+| `"significant at 95%"` | $0{,}01 \leq p < 0{,}05$ |
+| `"significant at 90%"` | $0{,}05 \leq p < 0{,}10$ |
+| `"not significant at 90%"` | $p \geq 0{,}10$ |
+
+Use `grepl("not significant", sig_x1)` para mascarar observações não
+significativas em mapas ou tabelas.
+
+::: {.callout-warning}
+## Tipos de coluna em `$parameter_estimates`
+
+Por conter colunas numéricas e textuais na mesma matriz, ao converter com
+`as.data.frame()` todas as colunas ficam do tipo `character`. Aplique
+`as.numeric()` ao extrair coeficientes, erros padrão ou $p$-valores.
+
+```r
+coefs   <- as.data.frame(mod$parameter_estimates)
+beta_x1 <- as.numeric(coefs[["x1"]])
+pval_x1 <- as.numeric(coefs[["probt_x1"]])
+sig_x1  <- coefs[["sig_x1"]]   # character, usado para mascarar
+```
+:::
+
+## Exemplo
 
 ```r
 library(gwzinbr)
@@ -117,8 +162,10 @@ data(southkorea_covid19)
 
 mod <- gwzinbr(
   data       = southkorea_covid19,
-  formula    = n_covid1 ~ diff_sd,
-  lat        = "y", long = "x",
+  formula    = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
+                          diff_sd + Crowding + Migration + Health_behavior,
+  lat        = "y",
+  long       = "x",
   offset     = "ln_total",
   model      = "negbin",
   method     = "adaptive_bsq",
@@ -127,49 +174,18 @@ mod <- gwzinbr(
   force      = TRUE
 )
 
-mod$bandwidth
+# Métricas de ajuste
 mod$measures
-```
 
-## Exemplo completo (todos os argumentos)
+# Coeficientes locais
+head(as.data.frame(mod$parameter_estimates))
 
-```r
-mod_completo <- gwzinbr(
-  data       = southkorea_covid19,
-  formula    = n_covid1 ~ Morbidity + high_sch_p + Healthcare_access +
-                          diff_sd + Crowding + Migration + Health_behavior,
-  xvarinf    = NULL,       # sem componente de inflação de zeros
-  weight     = NULL,       # pesos iguais
-  lat        = "y",
-  long       = "x",
-  grid       = NULL,       # sem grade de predição
-  method     = "adaptive_bsq",
-  model      = "negbin",
-  offset     = "ln_total",
-  distancekm = TRUE,
-  force      = TRUE,
-  int_inf    = TRUE,
-  maxg       = 100,
-  h          = 230         # de Golden()
-)
-```
+# Superdispersão local
+head(as.data.frame(mod$alpha_estimates))
 
-## Notas sobre o tempo de execução
+# Resíduos deviance
+resid <- mod$residuals[, 3]
 
-`gwzinbr()` ajusta um GLM ponderado separado para cada uma das $N$ unidades
-espaciais. Para datasets grandes ou modelos complexos (ZINB com muitas covariáveis),
-o tempo de execução pode ser substancial. Como referência aproximada:
-
-| $N$ | Modelo | Tempo aproximado |
-|-----|--------|-----------------|
-| < 100 | BN | < 1 min |
-| 250 | BN | 2–10 min |
-| 250 | ZINB | 10–30 min |
-| > 500 | BN | 30+ min |
-
-Salve o resultado com `saveRDS()` imediatamente após o ajuste:
-
-```r
-saveRDS(mod, "cache/modelo_gwzinbr.rds")
-mod <- readRDS("cache/modelo_gwzinbr.rds")
+# Referência global
+mod$global_param_estimates
 ```

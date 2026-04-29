@@ -1,40 +1,32 @@
-# Prefácio {.unnumbered}
+# gwzinbr {.unnumbered}
 
-Este livro é a documentação de referência do pacote R **gwzinbr**, que ajusta
-modelos de Regressão Binomial Negativa Inflacionada de Zeros Geograficamente
-Ponderada (GWZINBR) e modelos espaciais de contagem relacionados.
+Documentação de referência do pacote R **gwzinbr**.
 
-## O que este livro cobre
-
-O livro está organizado em quatro partes:
-
-- **Primeiros Passos** — motivação, fundamentos teóricos e preparação dos dados
-- **Referência das Funções** — documentação detalhada de `Golden()` e `gwzinbr()`,
-  incluindo cada parâmetro e cada elemento do objeto de saída
-- **Diagnósticos e Visualização** — como avaliar o ajuste do modelo e mapear
-  coeficientes locais
-- **Estudo de Caso** — um exemplo completo e reprodutível usando o dataset
-  `southkorea_covid19` incluído no pacote
+O pacote ajusta modelos de regressão geograficamente ponderados para dados de
+contagem, incluindo as distribuições Binomial Negativa Inflacionada de Zeros
+(ZINB), ZIP, Binomial Negativa e Poisson.
 
 ## Instalação
 
 ```r
-# Instalar do GitHub
-remotes::install_github("julianamrosa/gwzinbr")
+install.packages("gwzinbr")
 ```
 
-O pacote depende de `sp` (para cálculos de distância). As demais dependências
-são do R base.
+## Funções exportadas
 
-## Como citar o gwzinbr
+| Função | Descrição |
+|--------|-----------|
+| `Golden()` | Busca em Seção Áurea para seleção da largura de banda ótima |
+| `gwzinbr()` | Ajuste do modelo geograficamente ponderado |
 
-Se você utilizar o **gwzinbr** em sua pesquisa, por favor cite:
+## Dataset incluído
 
-> Mesquita, D., Ferreira, P. H. C., & Demetrio, C. G. B. (2023).
+| Dataset | Descrição |
+|---------|-----------|
+| `southkorea_covid19` | Contagens de COVID-19 em 229 distritos da Coreia do Sul |
+
+## Como citar
+
+> Rosa, J. M., Mesquita, D., et al. (2024).
 > *gwzinbr: Geographically Weighted Zero-Inflated Negative Binomial Regression*.
-> Pacote R. <https://github.com/julianamrosa/gwzinbr>
-
-## Como contribuir
-
-Relatórios de bugs e solicitações de funcionalidades podem ser registrados no
-[rastreador de issues do GitHub](https://github.com/julianamrosa/gwzinbr/issues).
+> Pacote R, versão 0.1.0. CRAN.
