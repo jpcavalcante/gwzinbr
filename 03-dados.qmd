@@ -36,94 +36,40 @@ quilômetros. Se usar coordenadas UTM com `distancekm = FALSE`, `h` estará em
 metros. Sempre documente qual SRC foi utilizado.
 :::
 
-### Prática recomendada
-
-Para análises sobre um único país ou cidade, projete para uma zona UTM local
-e use `distancekm = FALSE`. Isso fornece distâncias euclidianas precisas sem
-aproximação.
+O exemplo a seguir ilustra a conversão de um objeto `sf` para coordenadas
+projetadas em UTM e a extração dos centroides geométricos:
 
 ```r
 library(sf)
 
-# Converter objeto sf para UTM projetado
-dados_sf <- st_transform(dados_sf, crs = 31983)  # SIRGAS 2000 UTM Zona 23S (Brasil)
-
-# Extrair coordenadas do centroide da geometria
-coords <- st_coordinates(st_centroid(dados_sf))
-
-# Adicionar ao data.frame (remover geometria para modelagem)
-dados_modelo <- st_drop_geometry(dados_sf)
-dados_modelo$long_utm <- coords[, 1]
-dados_modelo$lat_utm  <- coords[, 2]
+dados_sf  <- st_transform(dados_sf, crs = 31983)   # SIRGAS 2000 UTM Zona 23S
+coords    <- st_coordinates(st_centroid(dados_sf))
+dados_mod <- st_drop_geometry(dados_sf)
+dados_mod$x_utm <- coords[, 1]
+dados_mod$y_utm <- coords[, 2]
 ```
 
-## Escolha dos pontos de referência espacial {#sec-centroids}
+## Pontos de referência espacial {#sec-centroids}
 
-A GWR atribui pesos com base nas distâncias entre os **pontos de referência**
-de cada unidade espacial. Para dados de polígonos (distritos, municípios), a
-escolha padrão é o centroide geométrico. No entanto, o centroide geométrico
-pode cair em uma área desabitada (parque, corpo d'água, zona industrial).
-
-Quando a análise envolve contagens baseadas em população, considere usar
-**centroides ponderados pela população** ou a localização de **máxima densidade
-populacional** dentro de cada polígono. Isso garante que a métrica de distância
-reflita onde as pessoas realmente vivem.
+O **gwzinbr** calcula distâncias entre pontos singulares — os valores fornecidos
+nas colunas `lat` e `long`. Para dados de polígonos, o ponto de referência de
+cada unidade espacial deve ser extraído antes da chamada às funções do pacote.
+As opções mais comuns são o centroide geométrico e o centroide ponderado pela
+população.
 
 ## A variável offset
 
-Quando a resposta é uma contagem extraída de populações de tamanhos diferentes,
-ignorar a exposição leva a resultados confundidos — áreas maiores apresentarão
-mecanicamente mais casos. O offset corrige isso.
+O argumento `offset` aceita o nome de uma coluna que contém o logaritmo natural
+da exposição. O valor da coluna é adicionado diretamente ao preditor linear:
 
-No **gwzinbr**, o offset deve ser fornecido como o **logaritmo natural** da
-exposição:
+$$
+\log(\mu_i) = \mathbf{x}_i^\top \boldsymbol{\beta}(\mathbf{u}_i) + \text{offset}_i
+$$
 
-```r
-dados_modelo$log_pop <- log(dados_modelo$populacao_total)
-
-# Em gwzinbr: offset = "log_pop"
-```
-
-Escolhas comuns de offset:
-
-| Situação | Offset |
-|----------|--------|
-| Taxa relativa à população | `log(populacao)` |
-| Padronização indireta | `log(casos_esperados)` |
-| Taxa por área | `log(area_km2)` |
-
-## Escolhendo o modelo
-
-Com os dados preparados, a escolha do argumento `model =` em `Golden()` e
-`gwzinbr()` deve considerar duas características da variável resposta:
-
-| Característica | Argumento |
-|---------------|-----------|
-| Superdispersão + excesso de zeros | `model = "zinb"` |
-| Superdispersão, sem excesso de zeros | `model = "negbin"` |
-| Equidisperso + excesso de zeros | `model = "zip"` |
-| Equidisperso, sem excesso de zeros | `model = "poisson"` |
-
-Quando `force = FALSE` (padrão), o pacote verifica internamente se a inflação
-de zeros é necessária e ajusta o modelo automaticamente se não for. Inicie com
-`model = "zinb"` e `force = FALSE` na dúvida — o pacote indicará se a reversão
-foi aplicada.
+Quando `offset = NULL`, o pacote define $\text{offset}_i = 0$ para todas as
+observações.
 
 ```r
-library(gwzinbr)
-data(southkorea_covid19)
-
-# Exemplo: iniciar com zinb; o pacote reverte para negbin se não houver
-# excesso de zeros
-gss <- Golden(
-  data      = southkorea_covid19,
-  formula   = n_covid1 ~ diff_sd,
-  lat       = "y", long = "x",
-  offset    = "ln_total",
-  model     = "zinb",
-  method    = "adaptive_bsq",
-  bandwidth = "aic",
-  globalmin = TRUE,
-  force     = FALSE   # reversão automática ativada
-)
+dados_mod$log_pop <- log(dados_mod$populacao_total)
+# offset = "log_pop" em Golden() e gwzinbr()
 ```

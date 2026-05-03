@@ -28,53 +28,33 @@ O **gwzinbr** aborda os três desafios simultaneamente, ajustando versões
 **Geograficamente Ponderadas** dos modelos de regressão Poisson, Binomial
 Negativa, ZIP e ZINB.
 
-## Quando usar o gwzinbr
+## Escopo do pacote
 
-Use as funções deste pacote quando:
+O pacote opera sobre dados de contagem georreferenciados, em que cada
+observação possui coordenadas espaciais e uma variável resposta inteira
+não negativa. Os modelos suportados são determinados pelo argumento `model`:
 
-- Sua variável resposta é uma **contagem inteira não negativa**.
-- Suas observações são **georreferenciadas** (cada linha possui latitude/longitude
-  ou coordenadas espaciais equivalentes).
-- Você suspeita que a relação entre os preditores e a resposta **varia no espaço**
-  (não-estacionariedade espacial).
+| `model` | Distribuição do componente de contagem |
+|---------|----------------------------------------|
+| `"zinb"` | Binomial Negativa Inflacionada de Zeros |
+| `"negbin"` | Binomial Negativa |
+| `"zip"` | Poisson Inflacionada de Zeros |
+| `"poisson"` | Poisson |
 
-Use a variante **ZINB** (`model = "zinb"`) adicionalmente quando:
+Quando `force = FALSE` (padrão), `gwzinbr()` verifica internamente se o número
+esperado de zeros sob a distribuição de contagem escolhida é compatível com os
+zeros observados. Se compatível, o componente de inflação de zeros é suprimido
+e o modelo reverte para a versão sem inflação. O argumento `force = TRUE`
+desativa essa verificação e mantém o modelo especificado em `model`.
 
-- A distribuição de contagens apresenta **superdispersão** (variância > média).
-- Os dados contêm **mais zeros** do que a distribuição Binomial Negativa prediz.
+## Sequência de chamadas
 
-## Fluxo de trabalho recomendado {#sec-workflow}
-
-O diagrama abaixo resume o caminho de decisão desde os dados brutos até um
-modelo ajustado com `gwzinbr`.
+O ajuste de um modelo geograficamente ponderado requer duas etapas:
 
 ```
-Dados de contagem brutos
-         │
-         ▼
-Escolher o modelo (argumento model =)
-  ├── superdispersão + excesso de zeros ──► model = "zinb"
-  ├── superdispersão, sem excesso       ──► model = "negbin"
-  ├── equidisperso + excesso de zeros   ──► model = "zip"
-  └── equidisperso, sem excesso         ──► model = "poisson"
-         │
-         ▼
-Selecionar largura de banda  ◄── Golden()
-         │
-         ▼
-Ajustar modelo ◄── gwzinbr(model = ...)
-         │
-         ▼
-Diagnósticos + visualização
+Golden()    →    seleciona a largura de banda h ótima
+gwzinbr()   →    ajusta o modelo com h fornecido via argumento h
 ```
-
-::: {.callout-tip}
-## Seleção automática do modelo
-Quando `force = FALSE` (padrão), `gwzinbr()` verifica internamente se a
-inflação de zeros é necessária e reverte automaticamente para a versão sem
-inflação caso os zeros observados sejam compatíveis com a distribuição
-escolhida. Use `force = TRUE` para fixar o modelo especificado.
-:::
 
 ## Visão geral do pacote
 

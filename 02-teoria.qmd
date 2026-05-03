@@ -121,27 +121,18 @@ O **gwzinbr** implementa dois tipos de kernel, selecionados pelo argumento
 onde $d_{ij}$ é a distância euclidiana entre as localizações $i$ e $j$, e $h$
 (ou $h_i$ no caso adaptativo) é a **largura de banda**.
 
-- **Largura de banda fixa** (`fixed_g`): $h$ é um valor de distância (mesmas
-  unidades das coordenadas). Toda localização usa o mesmo raio.
-- **Largura de banda adaptativa** (`adaptive_bsq`): $h$ é um inteiro — o número
-  de vizinhos mais próximos incluídos. Regiões esparsas recebem um raio físico
-  maior.
-
-::: {.callout-tip}
-## Qual kernel escolher?
-Use **adaptativo** (`adaptive_bsq`) quando a distribuição espacial das
-observações é irregular (p.ex., unidades administrativas com tamanhos muito
-diferentes). Use **fixo** (`fixed_g`) quando as observações são regularmente
-distribuídas ou quando há uma razão a priori forte para um raio fixo.
-:::
+Com `method = "fixed_g"`, $h$ é um valor de distância nas unidades das
+coordenadas e todas as localizações utilizam o mesmo raio. Com
+`method = "adaptive_bsq"`, $h$ é um inteiro que representa o número de
+vizinhos mais próximos incluídos; o raio físico se adapta à densidade local
+de pontos.
 
 ### Seleção da largura de banda
 
-A largura de banda $h$ controla o trade-off viés–variância:
-
-- **$h$ pequeno**: estimativas altamente locais, baixo viés, alta variância.
-- **$h$ grande**: estimativas mais suavizadas, alto viés, baixa variância.
-  Quando $h \to \infty$, a GWR colapsa para o modelo global.
+A largura de banda $h$ parametriza o grau de localização das estimativas:
+valores pequenos produzem coeficientes altamente locais; valores grandes
+aproximam as estimativas do caso global ($h \to \infty$ colapsa a GWR para
+o modelo não ponderado geograficamente).
 
 O $h$ ótimo é encontrado minimizando:
 
@@ -167,11 +158,122 @@ algoritmo de Mínimos Quadrados Iterativamente Reponderados (IRLS) geograficamen
 ponderado, utilizando o kernel espacial para atribuir pesos específicos por
 observação.
 
-### Teste de não-estacionariedade
+### O algoritmo GW-IRLS {#sec-gwirls}
 
-Após o ajuste do modelo, um teste formal verifica se a variação local de cada
-coeficiente $\beta_k(\mathbf{u}_i)$ é estatisticamente significativa — ou seja,
-se a versão GWR realmente melhora em relação a um $\beta_k$ global. Este teste
-é reportado em `$non_stationarity_test` (e `$non_stationarity_test_zero_infl` para
-o componente de inflação de zeros). Atenção: esses elementos são `NULL` quando
-`method = "adaptive_bsq"`.
+Para cada ponto de estimação $\mathbf{u}_i$, os coeficientes locais
+$\boldsymbol{\beta}(\mathbf{u}_i)$ são obtidos pelo IRLS ponderado
+geograficamente. O algoritmo itera entre os seguintes passos até a convergência:
+
+**Passo 1 — Calcular pesos espaciais.** Para cada observação $j$, o peso kernel
+$w_{ij}$ é calculado conforme o método escolhido (Gaussiano ou bi-quadrado).
+A diagonal da matriz de pesos espaciais $\mathbf{W}_i = \text{diag}(w_{i1},
+\ldots, w_{iN})$ codifica a proximidade de cada observação ao ponto $i$.
+
+**Passo 2 — Atualizar o parâmetro de superdispersão $\theta_i = 1/\alpha_i$.**
+A estimativa de máxima verossimilhança de $\theta_i$ é obtida por um Newton–Raphson
+interno, utilizando os pesos espaciais $w_{ij}$ e os pesos de E-step $1 - z_{kj}$:
+
+$$
+\theta_i^{(t+1)} = \theta_i^{(t)} - \frac{\partial \ell / \partial \theta}{\partial^2 \ell / \partial \theta^2}
+$$
+
+onde a log-verossimilhança ponderada utiliza $\sum_j w_{ij} \, w_j \, (1 - z_{kj})
+\log f_\text{BN}(y_j;\, \mu_j, \theta_i)$.
+
+**Passo 3 — Resolver o IRLS para $\boldsymbol{\beta}(\mathbf{u}_i)$.** Define-se
+a matriz de trabalho ponderada $\mathbf{A}_i = \text{diag}(a_{i1}, \ldots, a_{iN})$,
+onde o $j$-ésimo elemento é a segunda derivada (negada) da log-verossimilhança
+em relação ao preditor linear:
+
+$$
+a_{ij} = (1 - z_{kj})\!\left[\frac{\mu_j}{1 + \alpha_i \mu_j}
++ (y_j - \mu_j)\frac{\alpha_i \mu_j}{(1 + \alpha_i \mu_j)^2}\right]
+$$
+
+A solução IWLS local é:
+
+$$
+\hat{\boldsymbol{\beta}}(\mathbf{u}_i)
+= \bigl(\mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i \mathbf{X} \bigr)^{-1}
+  \mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i \,\tilde{\mathbf{z}}_i
+$$
+
+onde $\tilde{\mathbf{z}}_i = \boldsymbol{\eta} + \mathbf{A}_i^{-1}
+(\mathbf{y} - \boldsymbol{\mu}) - \text{offset}$ é a variável de trabalho.
+
+**Passo 4 — Atualizar $\boldsymbol{\lambda}(\mathbf{u}_i)$ (somente ZIP/ZINB).**
+A probabilidade de inflação de zeros $\pi_{ij}$ e o peso de E-step
+$z_{kj} = P(\text{zero estrutural} \mid y_j = 0)$ são atualizados, e um IRLS
+análogo resolve o componente de inflação de zeros.
+
+**Passo 5 — Verificar convergência.** O algoritmo converge quando a variação
+da log-verossimilhança ponderada entre iterações é inferior a $10^{-5}$.
+
+::: {.callout-note}
+## Inicialização com estimativas globais
+Antes de iniciar o GW-IRLS localizado, `gwzinbr()` ajusta um modelo global
+(não ponderado geograficamente) para obter $\hat{\boldsymbol{\beta}}_\text{global}$,
+$\hat{\alpha}_\text{global}$ e $\hat{\boldsymbol{\lambda}}_\text{global}$. Esses
+valores são usados como ponto de partida para cada regressão local, acelerando a
+convergência.
+:::
+
+### Matriz chapéu e parâmetros efetivos {#sec-hatmatrix}
+
+A matriz chapéu $\mathbf{S}$ mapeia a resposta observada nos valores ajustados:
+$\hat{\mathbf{y}} = \mathbf{S} \mathbf{y}$. Seu $i$-ésimo elemento diagonal é:
+
+$$
+h_{ii} = \mathbf{x}_i^\top
+\bigl(\mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i \mathbf{X}\bigr)^{-1}
+\mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i \bigg|_{\text{linha}\, i}
+$$
+
+O traço $\text{tr}(\mathbf{S}) = \sum_i h_{ii}$ é interpretado como o número
+efetivo de parâmetros do modelo GWR e aparece em `$measures["n_params"]`. Ele
+desempenha dois papéis centrais:
+
+- **AICc**: $\text{AICc} = 2\,\text{tr}(\mathbf{S}) - 2\hat{\ell} +
+  \frac{2\,\text{tr}(\mathbf{S})[\,\text{tr}(\mathbf{S})+1]}{N - \text{tr}(\mathbf{S}) - 1}$
+- **Teste de significância dos coeficientes locais**: os graus de liberdade
+  residuais são $\text{df} = N - \text{tr}(\mathbf{S})$, e o valor crítico $t$
+  é corrigido por Bonferroni para $p$ testes simultâneos:
+  $t^* = t_{1-\alpha^*/2,\,\text{df}}$ com $\alpha^* = 0{,}05 \times p / \text{tr}(\mathbf{S})$.
+
+### Pseudo-R² de McFadden {#sec-pseudor2}
+
+O **gwzinbr** reporta o pseudo-$R^2$ de McFadden, definido como:
+
+$$
+R^2_\text{McFadden} = 1 - \frac{\hat{\ell}_\text{nulo} - \hat{\ell}}{\hat{\ell}_\text{nulo} - \hat{\ell}_\text{constante}}
+$$
+
+onde $\hat{\ell}$ é a log-verossimilhança do modelo ajustado,
+$\hat{\ell}_\text{nulo}$ é a log-verossimilhança do modelo saturado
+(coeficientes $= y_i$) e $\hat{\ell}_\text{constante}$ é a log-verossimilhança
+de um modelo com apenas o intercepto global e a média global $\bar{y}$.
+
+A versão ajustada penaliza o número de parâmetros efetivos:
+
+$$
+R^2_\text{adj} = 1 - \frac{\hat{\ell}_\text{nulo} - \hat{\ell} + \hat{k} + 0{,}5}
+{\hat{\ell}_\text{nulo} - \hat{\ell}_\text{constante}}
+$$
+
+onde $\hat{k} = \text{tr}(\mathbf{S})$ para o componente de contagem.
+
+### Teste de não-estacionariedade {#sec-nonstat-teoria}
+
+Após o ajuste, um teste $F$ formal avalia se a variação espacial do coeficiente
+$\beta_k$ é estatisticamente significativa. O teste compara a amplitude
+interquartil (AIQ) de $\hat{\beta}_k(\mathbf{u}_i)$ entre as $N$ localizações
+com o que seria esperado sob um modelo estacionário global:
+
+$$
+V_k = \frac{\text{AIQ}[\hat{\beta}_k(\mathbf{u}_i)]}{\hat{\sigma}}, \qquad
+F_k = \frac{V_k / \text{df}_1}{\hat{\sigma}^2}
+$$
+
+O resultado é armazenado em `$non_stationarity_test` (componente de contagem)
+e `$non_stationarity_test_zero_infl` (componente de inflação de zeros). Ambos
+os elementos são `NULL` quando `method = "adaptive_bsq"`.

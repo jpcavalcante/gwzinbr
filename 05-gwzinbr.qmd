@@ -87,11 +87,11 @@ completamente em @sec-output. Aqui está uma tabela de referência rápida:
 | Elemento | Tipo | Descrição |
 |----------|------|-----------|
 | `$bandwidth` | escalar | Valor da largura de banda utilizado |
-| `$measures` | vetor nomeado | AIC, AICc, desvio, pseudo-R², pseudo-R² ajustado |
+| `$measures` | vetor nomeado (11 campos) | `sigma2`, `root_mse`, `n_params` ($=\text{tr}(\mathbf{S})$), `n_local_params`, `tot_variance`, `deviance`, `full_ll`, `pct_ll`, `adj_pct_ll`, `AIC`, `AICc` |
 | `$parameter_estimates` | matriz $N \times (2+4p+p)$ | Coeficientes, EP, $t$, $p$-valores e significância por localização |
 | `$alpha_estimates` | matriz $N \times 6$ | Colunas: `id`, `alpha`, `std`, `tstat`, `probt`, `sig_alpha` |
-| `$residuals` | matriz $N \times 5$ | Resíduos (múltiplos tipos) |
-| `$t_test_gwr_param_estimates` | vetor (3 escalares) | Parâmetros globais do teste $t$: `p_value`, `t_critical`, `df` |
+| `$residuals` | matriz $N \times 9$ | Colunas: `wt`, `y`, `yhat`, `res`, `resstd`, `influence` ($h_{ii}$), `cooksD`, `sumwi`, `pihat` |
+| `$t_test_gwr_param_estimates` | vetor (3 escalares) | Parâmetros globais do teste $t$: `alpha_level_5_pct` (nível de significância ajustado por Bonferroni), `t_critical`, `df` |
 | `$non_stationarity_test` | data frame ou NULL | Teste de não-estacionariedade (apenas `method != "adaptive_bsq"`) |
 | `$global_param_estimates` | matriz | Coeficientes do modelo global (referência) |
 | `$qntls_gwr_param_estimates` | matriz | Quantis das estimativas locais |
@@ -105,7 +105,7 @@ completamente em @sec-output. Aqui está uma tabela de referência rápida:
 | `$qntls_gwr_zero_infl_se` | matriz | Quantis dos EP de inflação de zeros |
 | `$descript_stats_gwr_zero_infl_se` | matriz | Estatísticas descritivas do EP ZI |
 | `$non_stationarity_test_zero_infl` | data frame ou NULL | Teste de não-estacionariedade ZI (apenas `method != "adaptive_bsq"`) |
-| `$analysis_max_like_zero_infl_param_estimated` | matriz | EMV dos parâmetros ZI |
+| `$analysis_max_like_zero_infl_param_estimates` | matriz | EMV dos parâmetros ZI (colunas: `Estimate`, `Std Error`, `t Value`, `Pr > \|t\|`) |
 | `$analysis_max_like_gof_measures` | matriz | Qualidade do ajuste para o modelo ZI global |
 | `$param_estimates_grid` | matriz | Predições nas localizações de `grid` |
 

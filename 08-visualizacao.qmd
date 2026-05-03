@@ -35,16 +35,15 @@ coefs$alpha <- as.numeric(alpha_df[, "alpha"])
 dados_sf <- bind_cols(dados_sf, coefs)
 ```
 
-## Mapeando coeficientes locais (mascarando não significativos)
+## Mapeando coeficientes locais
 
-O mapa GWR mais informativo exibe **apenas as estimativas locais estatisticamente
-significativas**, mascarando os distritos não significativos em cinza.
+As colunas `sig_<var>` de `$parameter_estimates` contêm os valores textuais
+`"significant at 99%"`, `"significant at 95%"`, `"significant at 90%"` e
+`"not significant at 90%"`. O trecho abaixo converte essas etiquetas em `NA`
+para as observações não significativas, o que resulta em cinza no mapa quando
+`na.value` é definido em `scale_fill_gradient2`.
 
 ```r
-# Usar a coluna sig_* de parameter_estimates para mascarar não significativos.
-# Os valores possíveis são: "significant at 99%", "significant at 95%",
-# "significant at 90%", "not significant at 90%".
-# Qualquer valor contendo "not significant" → NA (cinza no mapa).
 
 dados_sf <- dados_sf %>%
   mutate(
@@ -92,11 +91,11 @@ ggplot(dados_sf) +
   labs(title = "Distribuição espacial dos resíduos deviance — GWR-NB")
 ```
 
-Os resíduos devem aparecer espacialmente aleatórios após um modelo GWR bem
-ajustado. Agrupamentos de resíduos positivos ou negativos grandes sugerem
-covariáveis ausentes ou largura de banda inadequada.
-
 ## Mapeando o parâmetro de superdispersão (alpha)
+
+A coluna `alpha` de `$alpha_estimates` contém o valor local $\hat{\alpha}_i =
+1/\hat{\theta}_i$. Este elemento é `NULL` para `model = "poisson"` e
+`model = "zip"`.
 
 ```r
 ggplot(dados_sf) +
@@ -104,13 +103,8 @@ ggplot(dados_sf) +
   scale_fill_viridis_c(name = expression(hat(alpha)), option = "plasma") +
   theme_minimal(base_size = 13) +
   theme(axis.text = element_blank(), axis.ticks = element_blank()) +
-  labs(title = "Parâmetro local de superdispersão (α)",
-       subtitle = "α maior = mais variabilidade não explicada")
+  labs(title = "Parâmetro local de superdispersão")
 ```
-
-Regiões com $\hat{\alpha}$ alto são onde o modelo se ajusta mal — a variância
-das contagens é muito maior do que o previsto. Essas regiões podem justificar
-investigação de confundidores espaciais ausentes.
 
 ## Mapa multi-painel de coeficientes
 
@@ -151,15 +145,12 @@ mod$descript_stats_gwr_param_estimates
 # x2           ...
 ```
 
-Esta tabela é útil em publicações quando o espaço é limitado e você quer
-comunicar a amplitude da variação local para cada preditor.
+## Gráfico de convergência da BSA
 
-## Gráfico de convergência para seleção da largura de banda
-
-Após executar `Golden()`, visualize o critério em função da largura de banda:
+O elemento `$iterations` de `Golden()` contém todos os pares $(h_1,
+\text{crit}_1, h_2, \text{crit}_2)$ avaliados durante a busca.
 
 ```r
-# Assumindo que gss é a saída de Golden()
 iter <- gss$iterations
 
 ggplot(iter, aes(x = h1, y = aic1)) +

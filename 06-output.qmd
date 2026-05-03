@@ -1,33 +1,41 @@
-# Interpretando o Objeto de Saída {#sec-output}
+# Objeto de Saída {#sec-output}
 
-A lista retornada por `gwzinbr()` contém 22 elementos nomeados. Este capítulo
-percorre cada um com uma descrição prática e exemplos de uso.
+`gwzinbr()` retorna uma lista nomeada. O número de elementos varia conforme
+o modelo ajustado: elementos relativos à inflação de zeros são `NULL` para
+`model = "negbin"` e `model = "poisson"`; `$non_stationarity_test` e
+`$non_stationarity_test_zero_infl` são `NULL` para `method = "adaptive_bsq"`;
+`$param_estimates_grid` é `NULL` quando `grid = NULL`.
 
 ## Qualidade do ajuste: `$measures` e `$bandwidth`
 
 ```r
 mod$bandwidth   # escalar — largura de banda h utilizada
-mod$measures    # vetor numérico nomeado
+mod$measures    # vetor numérico nomeado com 11 elementos
 ```
 
-`$measures` contém:
+`$measures` é um vetor nomeado com **11 elementos**:
 
 | Nome | Descrição |
 |------|-----------|
+| `sigma2` | Variância residual ponderada do modelo GWR: $\hat{\sigma}^2 = N \cdot \text{SQR} \,/\, [(N - \hat{k}) \cdot \sum w_i]$ |
+| `root_mse` | Raiz da variância residual ponderada: $\sqrt{\hat{\sigma}^2}$ |
+| `n_params` | Número efetivo de parâmetros do componente de contagem: $\hat{k} = \text{tr}(\mathbf{S})$ |
+| `n_local_params` | Número total de parâmetros locais (contagem + inflação de zeros) |
+| `tot_variance` | Variância total ponderada da resposta |
 | `deviance` | Desvio residual do modelo GWR |
-| `AIC` | Critério de Informação de Akaike |
-| `AICc` | AIC corrigido (ajuste para amostras pequenas) |
-| `pct_ll` | Pseudo-R² (McFadden): $1 - \hat{\ell}/\hat{\ell}_0$ |
-| `adj_pct_ll` | Pseudo-R² ajustado |
+| `full_ll` | Log-verossimilhança do modelo GWR ajustado |
+| `pct_ll` | Pseudo-R² de McFadden: $1 - (\hat{\ell}_\text{nulo} - \hat{\ell}) \,/\, (\hat{\ell}_\text{nulo} - \hat{\ell}_\text{constante})$ |
+| `adj_pct_ll` | Pseudo-R² de McFadden ajustado (penaliza o número de parâmetros) |
+| `AIC` | Critério de Informação de Akaike: $2\hat{k} - 2\hat{\ell}$ |
+| `AICc` | AIC corrigido para amostras pequenas: $\text{AIC} + \frac{2\hat{k}(\hat{k}+1)}{N - \hat{k} - 1}$ |
 
 ```r
-# Exemplo
 mod$measures["AICc"]
 mod$measures["pct_ll"]
+mod$measures["sigma2"]
+mod$measures["n_params"]
+print(mod$measures)
 ```
-
-Compare o AICc entre modelos candidatos (menor é melhor). Um pseudo-R² acima de
-0,2 geralmente indica ajuste razoável para modelos de contagem.
 
 ## Estimativas locais e significância: `$parameter_estimates`
 
@@ -68,25 +76,26 @@ dados_modelo$beta_x1 <- beta_x1
 ## Erros padrão locais: `$qntls_gwr_se` e `$descript_stats_gwr_se`
 
 ```r
-mod$qntls_gwr_se              # quantis do EP por coeficiente
-mod$descript_stats_gwr_se     # média, DP, mín., máx. do EP por coeficiente
+mod$qntls_gwr_se              # matriz: quantis (Q1, Mediana, Q3, AIQ) × coeficiente
+mod$descript_stats_gwr_se     # matriz: (Média, Mín., Máx.) × coeficiente
 ```
 
-Use esses elementos para avaliar a variabilidade dos erros padrão locais na
-área de estudo. Alta variabilidade no EP pode indicar dados escassos em algumas
-regiões.
+Estatísticas descritivas dos erros padrão locais de cada coeficiente do
+componente de contagem. As linhas de `$qntls_gwr_se` correspondem a Q1,
+Mediana, Q3 e AIQ; as linhas de `$descript_stats_gwr_se` correspondem a
+Média, Mín. e Máx.
 
-## Estatísticas resumo locais: `$qntls_gwr_param_estimates` e `$descript_stats_gwr_param_estimates`
+## Estatísticas descritivas das estimativas locais: `$qntls_gwr_param_estimates` e `$descript_stats_gwr_param_estimates`
 
 ```r
-mod$qntls_gwr_param_estimates            # quantis por coeficiente
-mod$descript_stats_gwr_param_estimates   # média, DP, mín., máx. por coeficiente
+mod$qntls_gwr_param_estimates            # matriz: quantis × coeficiente
+mod$descript_stats_gwr_param_estimates   # matriz: (Média, Mín., Máx.) × coeficiente
 ```
 
-Forma rápida de resumir a distribuição espacial de cada coeficiente local:
+Para modelos `"negbin"` e `"zinb"`, as colunas incluem também `alpha`
+(parâmetro de superdispersão).
 
 ```r
-# Imprimir a tabela completa de estatísticas descritivas
 mod$descript_stats_gwr_param_estimates
 ```
 
@@ -97,17 +106,20 @@ mod$t_test_gwr_param_estimates   # vetor nomeado de 3 escalares
 ```
 
 > **Atenção:** este elemento **não** contém p-valores por observação. Ele
-> armazena apenas os parâmetros globais do teste t aplicado às estimativas locais:
+> armazena apenas os parâmetros globais do teste $t$ aplicado às estimativas locais:
 
 | Nome | Conteúdo |
 |------|----------|
-| `p_value` | Nível de significância ajustado (correção de Bonferroni) |
-| `t_critical` | Valor crítico $t$ correspondente |
-| `df` | Graus de liberdade |
+| `alpha_level_5_pct` | Nível de significância nominal ajustado pela correção de Bonferroni para múltiplos testes locais: $\alpha^* = 0{,}05 \times p \,/\, \text{tr}(\mathbf{S})$ |
+| `t_critical` | Valor crítico $t$ correspondente ao nível $\alpha^*$ com `df` graus de liberdade |
+| `df` | Graus de liberdade residuais: $N - \text{tr}(\mathbf{S})$ |
 
-Os **p-valores por observação** estão em `$parameter_estimates`, nas colunas
-`probt_<var>`. As etiquetas de significância prontas para uso estão nas colunas
-`sig_<var>` (ver seção anterior).
+A correção de Bonferroni é calculada como $\alpha^* = 0{,}05 \times p \,/\,
+\text{tr}(\mathbf{S})$, onde $p$ é o número de preditores no componente de
+contagem e $\text{tr}(\mathbf{S})$ é o número efetivo de parâmetros.
+
+Os $p$-valores por observação estão em `$parameter_estimates`, colunas
+`probt_<var>`. As etiquetas de significância estão nas colunas `sig_<var>`.
 
 ## Parâmetro de superdispersão: `$alpha_estimates`
 
@@ -120,40 +132,41 @@ As colunas são: `id`, `alpha`, `std`, `tstat`, `probt`, `sig_alpha`.
 > **Atenção:** a coluna 1 é o índice `id`, **não** o valor de alpha.
 > Use o nome da coluna para extrair corretamente.
 
-O parâmetro local de superdispersão $\alpha_i$ quantifica o quanto a variância
-excede a média em cada localização. Regiões com $\alpha$ alto apresentam mais
-variabilidade não explicada.
+O parâmetro de superdispersão local $\alpha_i = 1/\theta_i$ está na coluna
+`alpha`. Valores de $\alpha_i = 0$ correspondem ao caso Poisson (sem
+superdispersão). Este elemento é `NULL` para `model = "poisson"` e
+`model = "zip"`.
 
 ```r
 alpha_df    <- as.data.frame(mod$alpha_estimates)
 alpha_local <- as.numeric(alpha_df[, "alpha"])
-dados_modelo$alpha <- alpha_local
 ```
 
-Este elemento é `NULL` para modelos Poisson e ZIP (sem parâmetro de
-superdispersão).
-
-## Resíduos: `$residuals`
+## Resíduos e medidas de influência: `$residuals`
 
 ```r
-mod$residuals   # matriz: N × 5
+mod$residuals   # matriz: N × 9
 ```
 
-As cinco colunas são:
+As **9 colunas** nomeadas são:
 
-| Coluna | Tipo de resíduo |
-|--------|----------------|
-| 1 | Resíduos brutos ($y_i - \hat{y}_i$) |
-| 2 | Resíduos de Pearson |
-| 3 | Resíduos deviance |
-| 4 | Resíduos deviance padronizados |
-| 5 | Resíduos de trabalho (do IRLS) |
-
-Os resíduos deviance (coluna 3 ou 4) são mais úteis para diagnósticos espaciais:
+| Nome | Descrição |
+|------|-----------|
+| `wt` | Peso amostral $w_i$ (1 se `weight = NULL`) |
+| `y` | Resposta observada $y_i$ |
+| `yhat` | Valor ajustado $\hat{y}_i$ (para modelos ZI: $\hat{y}_i = \hat{\mu}_i(1 - \hat{\pi}_i)$) |
+| `res` | Resíduo bruto: $e_i = y_i - \hat{y}_i$ |
+| `resstd` | Resíduo padronizado: $e_i \,/\, [\hat{\sigma}\sqrt{1 - h_{ii}}]$, onde $h_{ii}$ é o elemento diagonal da matriz chapéu $\mathbf{S}$ |
+| `influence` | Influência local $h_{ii}$ — elemento diagonal de $\mathbf{S} = \mathbf{X}(\mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i \mathbf{X})^{-1}\mathbf{X}^\top \mathbf{W}_i \mathbf{A}_i$ |
+| `cooksD` | Distância de Cook local: $D_i = (e_i^{\,\text{std}})^2 \cdot h_{ii} \,/\, [(1 - h_{ii}) \cdot p]$ |
+| `sumwi` | Soma dos pesos espaciais $\sum_j w_{ij}$ para a localização $i$ |
+| `pihat` | Probabilidade de inflação de zeros ajustada $\hat{\pi}_i = \exp(\hat{\eta}_i)/(1+\exp(\hat{\eta}_i))$ (útil para modelos ZIP/ZINB; para Poisson/NB, reflete o preditor linear global) |
 
 ```r
-resid_deviance <- mod$residuals[, 3]
-dados_modelo$residuos <- resid_deviance
+res_df <- as.data.frame(mod$residuals)
+res_df$resstd
+res_df$influence
+res_df$cooksD
 ```
 
 ## Teste de não-estacionariedade: `$non_stationarity_test`
@@ -167,17 +180,26 @@ mod$non_stationarity_test   # data frame: uma linha por coeficiente
 > retorna `NULL`. Nesse caso, a evidência de não-estacionariedade deve ser
 > avaliada pela variabilidade espacial dos coeficientes locais nos mapas.
 
-Este teste avalia se a variação espacial de cada coeficiente local é
-estatisticamente significativa — ou seja, se um coeficiente globalmente
-constante seria suficiente. Um resultado significativo (p-valor pequeno)
-apoia a retenção da GWR em relação a um modelo global para aquela covariável.
+O teste de não-estacionariedade avalia se a variação espacial dos coeficientes
+locais $\hat{\beta}_k(\mathbf{u}_i)$ é estatisticamente distinguível de zero.
+A formulação do teste consta em @sec-nonstat-teoria.
+
+O data frame tem uma linha por preditor (incluindo o intercepto) e **5 colunas**:
+
+| Coluna | Descrição |
+|--------|-----------|
+| `V` | Amplitude interquartil normalizada dos coeficientes locais: $V_k = \text{IQR}[\hat{\beta}_k(\mathbf{u}_i)] / \hat{\sigma}$ |
+| `F` | Estatística $F$: $F_k = (V_k / \text{df}_1) \,/\, \hat{\sigma}^2$ |
+| `ndf` | Graus de liberdade do numerador |
+| `ddf` | Graus de liberdade do denominador |
+| `Pr > F` | $p$-valor do teste $F$ unicaudal |
 
 ```r
 mod$non_stationarity_test
-#         variavel      F_stat   gl1   gl2   p_valor
-# (Intercept)          2.341    4.2  91.8     0.032
-# x1                   3.112    4.2  91.8     0.004
-# x2                   1.067    4.2  91.8     0.390
+#             V      F    ndf    ddf  Pr > F
+# Intercept  3.21  2.34   4.2   91.8  0.032
+# x1         4.27  3.11   4.2   91.8  0.004
+# x2         1.46  1.07   4.2   91.8  0.390
 ```
 
 ## Referência do modelo global: `$global_param_estimates`
@@ -186,9 +208,9 @@ mod$non_stationarity_test
 mod$global_param_estimates   # matriz: coeficientes e EP do NB global
 ```
 
-Este é o ajuste global da Binomial Negativa usado como ponto de partida para
-o algoritmo IRLS. Serve como referência para comparação com as estimativas
-locais da GWR.
+Contém a matriz de coeficientes e erros padrão do modelo global (não ponderado
+geograficamente) ajustado internamente como estado inicial do algoritmo GW-IRLS
+(ver @sec-gwirls).
 
 ## Elementos de inflação de zeros
 
@@ -202,8 +224,8 @@ Os seguintes elementos são não-`NULL` apenas quando `model %in% c("zinb", "zip
 | `$qntls_gwr_zero_infl_se` | Quantis dos EP de inflação de zeros |
 | `$descript_stats_gwr_zero_infl_se` | Estatísticas descritivas do EP ZI |
 | `$non_stationarity_test_zero_infl` | Teste de não-estacionariedade para o componente ZI (apenas `method != "adaptive_bsq"`) |
-| `$analysis_max_like_zero_infl_param_estimated` | Estimativas dos parâmetros ZI por EMV |
-| `$analysis_max_like_gof_measures` | Qualidade do ajuste para o modelo ZI global |
+| `$analysis_max_like_zero_infl_param_estimates` | Estimativas dos parâmetros ZI por EMV (colunas: `Estimate`, `Std Error`, `t Value`, `Pr > \|t\|`) |
+| `$analysis_max_like_gof_measures` | Qualidade do ajuste para o modelo ZI global (ver nota abaixo) |
 
 ## Grade de predição: `$param_estimates_grid`
 
@@ -211,16 +233,41 @@ Os seguintes elementos são não-`NULL` apenas quando `model %in% c("zinb", "zip
 mod$param_estimates_grid   # matriz ou NULL
 ```
 
-Quando um data.frame `grid` é passado para `gwzinbr()`, este elemento contém
-os coeficientes locais preditos em cada localização da grade. Útil para produzir
-mapas raster suaves da variação espacial dos coeficientes.
+Quando `grid` é não-nulo, contém a matriz de coeficientes locais estimados nas
+localizações da grade, com as colunas `x`, `y`, coeficientes, erros padrão e
+estatísticas $t$ (sem $p$-valores nem colunas `sig_`). Retorna `NULL` quando
+`grid = NULL`.
+
+::: {.callout-note}
+## Campos de `$analysis_max_like_gof_measures` por tipo de modelo
+
+O vetor retornado varia conforme o modelo ajustado:
+
+- Para `model = "zinb"` ou `"zip"`: campos nomeados `deviance`, `full_ll`, `pct_ll`, `adj_pct_ll`, `AIC`, `AICc` (pseudo-R² baseado em log-verossimilhança).
+- Para `model = "negbin"` ou `"poisson"`: campos nomeados `deviance`, `full_ll`, `pct_devg`, `adj_pct_devg`, `AIC`, `AICc` (pseudo-R² baseado em desvio).
+:::
 
 ## Matriz de variância-covariância: `$variance_covariance_matrix`
 
 ```r
-mod$variance_covariance_matrix   # matriz quadrada: (p+1) × (p+1)
+mod$variance_covariance_matrix   # matriz quadrada
 ```
 
-A matriz de variância-covariância das estimativas globais dos parâmetros. Pode
-ser usada para calcular intervalos de confiança para os coeficientes do modelo
-global de referência.
+Matriz de variância-covariância das estimativas globais dos parâmetros, obtida
+do modelo global ajustado internamente como ponto de partida do algoritmo GW-IRLS.
+A dimensão e os nomes de linhas/colunas dependem do modelo:
+
+| Modelo | Dimensão | Linhas/colunas |
+|--------|----------|----------------|
+| `"negbin"` | $(p+2) \times (p+2)$ | `alpha`, `Intercept`, preditores |
+| `"zinb"` | $(p+q+2) \times (p+q+2)$ | `alpha`, `Intercept`, preditores, preditores ZI com sufixo `_xvarinf` |
+| `"poisson"` | $(p+1) \times (p+1)$ | `Intercept`, preditores |
+| `"zip"` | $(p+q+1) \times (p+q+1)$ | `Intercept`, preditores, preditores ZI com sufixo `_xvarinf` |
+
+onde $p$ = número de preditores no componente de contagem e $q$ = número de
+preditores no componente de inflação de zeros.
+
+```r
+vc        <- mod$variance_covariance_matrix
+ep_global <- sqrt(diag(vc))
+```

@@ -18,21 +18,36 @@ O livro está organizado em quatro partes:
 
 ## Instalação
 
+A versão estável está disponível no CRAN:
+
 ```r
-# Instalar do GitHub
+install.packages("gwzinbr")
+```
+
+A versão de desenvolvimento pode ser instalada diretamente do repositório GitHub:
+
+```r
 remotes::install_github("julianamrosa/gwzinbr")
 ```
 
-O pacote depende de `sp` (para cálculos de distância). As demais dependências
-são do R base.
+O pacote tem como única dependência externa o pacote `sp`, utilizado para o
+cálculo de distâncias geoespaciais via `sp::spDistsN1()`. As demais
+dependências são do R base.
 
 ## Como citar o gwzinbr
 
-Se você utilizar o **gwzinbr** em sua pesquisa, por favor cite:
+Se você utilizar o **gwzinbr** em sua pesquisa, por favor cite o pacote e o
+artigo metodológico de referência:
 
-> Mesquita, D., Ferreira, P. H. C., & Demetrio, C. G. B. (2023).
+> Vasconcelos, J., Rosa, J., & da Silva, A. (2024).
 > *gwzinbr: Geographically Weighted Zero-Inflated Negative Binomial Regression*.
-> Pacote R. <https://github.com/julianamrosa/gwzinbr>
+> R package version 0.1.0. <https://CRAN.R-project.org/package=gwzinbr>
+
+> Da Silva, A. R., & De Sousa, M. D. R. (2023).
+> Geographically weighted zero-inflated negative binomial regression:
+> A general case for count data.
+> *Spatial Statistics*, 58, 100790.
+> <https://doi.org/10.1016/j.spasta.2023.100790>
 
 ## Como contribuir
 

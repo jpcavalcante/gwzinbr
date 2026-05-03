@@ -1,97 +1,100 @@
 # Diagnósticos {#sec-diagnosticos}
 
-Após ajustar um modelo `gwzinbr()`, quatro tipos de questões diagnósticas surgem:
+## Medidas de qualidade do ajuste: `$measures`
 
-1. **O modelo está bem calibrado?** — medidas de qualidade do ajuste
-2. **Os resíduos são espacialmente aleatórios?** — teste I de Moran
-3. **A variação espacial é relevante?** — testes de não-estacionariedade
-4. **A inflação de zeros era necessária?** — verificação de excesso de zeros
-
-## Qualidade do ajuste
+O vetor `$measures` contém 11 campos escalares que descrevem a qualidade do
+ajuste do modelo GWR. A descrição completa de cada campo consta em @sec-output.
 
 ```r
 mod$measures
-#   deviance       AIC      AICc    pct_ll adj_pct_ll
-#     94.83    745.26    756.76      0.93       0.90
+#    sigma2  root_mse  n_params  n_local_params  tot_variance
+#      2.13      1.46     18.42           18.42        312.44
+#  deviance   full_ll    pct_ll    adj_pct_ll      AIC      AICc
+#     94.83   -372.63      0.93          0.90   745.26    756.76
 ```
 
-Compare o modelo GWR com a Binomial Negativa global:
+O campo `$analysis_max_like_gof_measures` retorna as medidas de qualidade do
+ajuste do modelo global de referência (ajustado internamente pelo GW-IRLS como
+ponto de inicialização):
 
-| Métrica | NB Global | GWR-NB | Interpretação |
-|---------|-----------|--------|---------------|
-| AICc | maior | menor | GWR ajusta melhor |
-| Desvio | maior | menor | Menos variação não explicada |
-| Pseudo-R² | menor | maior | Mais variância explicada |
+```r
+mod$analysis_max_like_gof_measures
+#  deviance   full_ll    pct_ll  adj_pct_ll     AIC    AICc
+#   523.14   -471.21      0.18        0.15   956.42  959.01
+```
 
-Um pseudo-R² acima de 0,9 para o modelo GWR (em comparação com, digamos, 0,18
-para o modelo global) indica melhora dramática ao permitir coeficientes
-espacialmente variáveis.
+Os nomes dos campos em `$analysis_max_like_gof_measures` diferem conforme o
+modelo: `pct_ll` / `adj_pct_ll` para `"zinb"` e `"zip"` (pseudo-$R^2$ baseado
+em log-verossimilhança); `pct_devg` / `adj_pct_devg` para `"negbin"` e
+`"poisson"` (pseudo-$R^2$ baseado em desvio).
+
+## Influência local e distância de Cook: `$residuals`
+
+As colunas `influence` e `cooksD` de `$residuals` contêm, respectivamente, o
+elemento diagonal $h_{ii}$ da matriz chapéu $\mathbf{S}$ e a distância de Cook
+local $D_i$ (ver @sec-hatmatrix para as definições formais).
+
+```r
+res_df <- as.data.frame(mod$residuals)
+
+# Elemento diagonal da matriz chapéu
+res_df$influence
+
+# Distância de Cook local
+res_df$cooksD
+```
 
 ## Autocorrelação espacial nos resíduos
 
-O teste I de Moran verifica se os resíduos do modelo ajustado apresentam padrão
-espacial. Autocorrelação positiva significativa nos resíduos da GWR sugeriria
-que a largura de banda é muito grande (super-suavização).
+O pacote **gwzinbr** não implementa um teste de autocorrelação espacial
+internamente. A verificação da aleatoriedade espacial dos resíduos requer o
+pacote `spdep`. Os resíduos brutos estão na coluna `res` de `$residuals`.
 
 ```r
 library(spdep)
 library(gwzinbr)
 data(southkorea_covid19)
 
-# Assumindo que mod já foi ajustado
-resid_deviance <- mod$residuals[, 3]
+# Extrair resíduos brutos
+res_bruto <- as.data.frame(mod$residuals)[["res"]]
 
-# Construir pesos espaciais (k-NN com k = 4)
+# Construir pesos espaciais (k-NN, k = 4)
 coords <- cbind(southkorea_covid19$x, southkorea_covid19$y)
 knn    <- knn2nb(knearneigh(coords, k = 4))
 lw     <- nb2listw(knn, style = "W")
 
-# Teste de Moran (Monte Carlo)
-moran.mc(resid_deviance, listw = lw, nsim = 999)
+# Estatística I de Moran com permutações de Monte Carlo
+moran.mc(res_bruto, listw = lw, nsim = 999)
 ```
 
-**Interpretando o resultado:**
+## Teste de não-estacionariedade: `$non_stationarity_test`
 
-| I de Moran | p-valor | Interpretação |
-|------------|---------|---------------|
-| $\approx 0$ | $> 0,05$ | Resíduos espacialmente aleatórios — GWR removeu a estrutura espacial ✓ |
-| $> 0$ | $< 0,05$ | Agrupamento positivo permanece — considere $h$ menor ou covariáveis adicionais |
-| $< 0$ | $< 0,05$ | Autocorrelação negativa — largura de banda pode ser muito pequena |
-
-## Teste de não-estacionariedade {#sec-nonstationarity}
-
-O teste de não-estacionariedade avalia, para cada preditor, se a variação
-espacial nos coeficientes locais é estatisticamente significativa.
+`$non_stationarity_test` retorna `NULL` quando `method = "adaptive_bsq"`.
+Com `method = "fixed_g"`, o elemento contém um data frame com uma linha por
+preditor (incluindo o intercepto) e as colunas `V`, `F`, `ndf`, `ddf`,
+`Pr > F` (ver @sec-output para definição de cada campo e @sec-nonstat-teoria
+para a formulação do teste).
 
 ```r
-mod$non_stationarity_test   # NULL quando method = "adaptive_bsq"
-#              variavel   F_stat  gl1    gl2  p_valor
-# (Intercept)             2.341   4.2   91.8    0.032
-# Morbidity               3.112   4.2   91.8    0.004
-# high_sch_p              1.067   4.2   91.8    0.390
-# ...
+mod$non_stationarity_test
+#             V      F    ndf    ddf  Pr > F
+# Intercept  3.21  2.34   4.2   91.8  0.032
+# x1         4.27  3.11   4.2   91.8  0.004
+# x2         1.46  1.07   4.2   91.8  0.390
 ```
 
-Um resultado significativo (p-valor pequeno) indica que a relação entre aquele
-preditor e a resposta varia genuinamente no espaço, reforçando a adequação da
-especificação geograficamente ponderada para aquela covariável.
+O elemento análogo para o componente de inflação de zeros é
+`$non_stationarity_test_zero_infl`, igualmente `NULL` com
+`method = "adaptive_bsq"`.
 
-## Referência global vs. GWR
+## Modelo global de referência: `$global_param_estimates`
 
-O objeto retornado por `gwzinbr()` armazena os coeficientes do modelo global
-utilizado internamente como ponto de partida do algoritmo. Use
-`$global_param_estimates` para comparar o ajuste global com o ajuste local:
+`$global_param_estimates` contém a matriz de coeficientes e erros padrão do
+modelo global (não ponderado geograficamente) ajustado internamente pelo
+GW-IRLS como estado inicial. Os campos de qualidade do ajuste correspondentes
+estão em `$analysis_max_like_gof_measures`.
 
 ```r
-# Coeficientes do modelo global de referência (NB ajustado internamente)
 mod$global_param_estimates
-
-# Métricas de qualidade do ajuste do modelo GWR
-mod$measures
-#   deviance       AIC      AICc    pct_ll adj_pct_ll
-#     94.83    745.26    756.76      0.93       0.90
+mod$analysis_max_like_gof_measures
 ```
-
-Um pseudo-R² (`pct_ll`) substancialmente maior do que o esperado para um modelo
-global, combinado com AICc menor, indica que a especificação geograficamente
-ponderada melhora o ajuste.
